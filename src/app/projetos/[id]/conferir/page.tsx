@@ -1,0 +1,110 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { AppShell } from "@/components/app-shell";
+import { Notice } from "@/components/notice";
+import { SubmitButton } from "@/components/submit-button";
+import { getDemoProject } from "@/lib/demo-data";
+import {
+  buildDemoCompositionHash,
+  formatBrlFromCents,
+  listDemoProjectPublications,
+  readDemoProjectDraft,
+} from "@/lib/demo-workspace";
+import { publishProjectAction } from "./actions";
+
+export default async function ReviewProjectPage({ params, searchParams }: PageProps<"/projetos/[id]/conferir">) {
+  const { id } = await params;
+  const project = getDemoProject(id);
+  if (!project) notFound();
+  const query = await searchParams;
+  const notice = typeof query.notice === "string" ? query.notice : undefined;
+  const draft = await readDemoProjectDraft(project.id);
+  const publications = await listDemoProjectPublications(project.id);
+  const pendingEvidence = project.evidence.filter((item) => item.availability === "Pendente");
+  const undocumentedPayments = draft.manualFinancialEntries.filter(
+    (entry) => entry.kind === "Pagamento" && entry.documentState === "Sem arquivo associado",
+  );
+  const uncertainReferences = project.financialReferences.filter(
+    (entry) => entry.relation === "Fraca" || entry.relation === "Sem relação confirmada",
+  );
+  const canPublish = draft.narrative.trim().length >= 20;
+  const compositionHash = buildDemoCompositionHash(project, draft);
+  const publish = publishProjectAction.bind(null, project.id, compositionHash);
+
+  return (
+    <AppShell>
+      <main className="mx-auto max-w-6xl px-5 py-8 lg:px-8 lg:py-10">
+        <Link href={`/projetos/${project.id}`} className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--brand)] hover:underline">
+          <span aria-hidden>←</span> Voltar para editar
+        </Link>
+
+        <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(18rem,.75fr)]">
+          <div className="space-y-6">
+            <section className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-sm lg:p-8">
+              <p className="text-xs font-bold uppercase tracking-[.16em] text-[var(--brand)]">Conferir e publicar</p>
+              <h1 className="mt-3 text-3xl font-bold tracking-tight text-[var(--ink)]">{project.name}</h1>
+              <p className="mt-3 text-sm leading-6 text-[var(--ink-muted)]">Esta prévia preserva a origem e a situação de cada registro. A publicação cria uma cópia imutável.</p>
+              {publications[0] ? (
+                <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Última publicação: <Link className="font-bold underline" href={`/publicacoes/${publications[0].id}`}>V{publications[0].version}</Link>. Qualquer correção publicada gera a próxima versão.
+                </p>
+              ) : null}
+            </section>
+
+            <Notice code={notice} />
+
+            <section aria-labelledby="preview-narrative" className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-sm">
+              <h2 id="preview-narrative" className="text-xl font-bold text-[var(--ink)]">O que foi feito</h2>
+              <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-slate-700">{draft.narrative}</p>
+            </section>
+
+            <section aria-labelledby="preview-activities" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
+              <div className="border-b border-[var(--border)] p-5"><h2 id="preview-activities" className="text-xl font-bold text-[var(--ink)]">Atividades e medições</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Medição não comprova faturamento ou pagamento.</p></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Atividade</th><th className="px-5 py-3">BM</th><th className="px-5 py-3">Horas</th><th className="px-5 py-3 text-right">Medido</th></tr></thead><tbody className="divide-y divide-[var(--border)]">{project.activities.map((item) => <tr key={item.id}><td className="px-5 py-4"><strong className="block">{item.description}</strong><span className="text-xs text-slate-500">{item.id}</span></td><td className="px-5 py-4">{item.bm}</td><td className="px-5 py-4">{item.hours}</td><td className="px-5 py-4 text-right font-semibold">{item.measuredValue}</td></tr>)}</tbody></table></div>
+            </section>
+
+            <section aria-labelledby="preview-financial" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
+              <div className="border-b border-[var(--border)] p-5"><h2 id="preview-financial" className="text-xl font-bold text-[var(--ink)]">Referências financeiras</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">As naturezas não são somadas automaticamente.</p></div>
+              <div className="divide-y divide-[var(--border)]">
+                {project.financialReferences.map((item) => <article key={item.id} className="p-5"><div className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase text-[var(--brand)]">Referência importada · {item.kind}</p><h3 className="mt-1 font-semibold">{item.label}</h3><p className="mt-2 text-xs text-slate-500">{item.id} · Relação: {item.relation} · Pagamento: {item.payment}</p></div><strong>{item.amount}</strong></div></article>)}
+                {draft.manualFinancialEntries.map((item) => <article key={item.id} className="border-l-4 border-l-blue-400 p-5"><div className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase text-blue-800">Cadastro manual · {item.kind}</p><h3 className="mt-1 font-semibold">{item.description}</h3><p className="mt-2 text-xs text-slate-500">{item.origin} · {item.documentState}</p></div><strong>{formatBrlFromCents(item.amountCents)}</strong></div></article>)}
+                {!project.financialReferences.length && !draft.manualFinancialEntries.length ? <p className="p-5 text-sm text-slate-500">Nenhuma referência financeira.</p> : null}
+              </div>
+            </section>
+
+            <section aria-labelledby="preview-evidence" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
+              <div className="border-b border-[var(--border)] p-5"><h2 id="preview-evidence" className="text-xl font-bold text-[var(--ink)]">Evidências</h2></div>
+              <ul className="divide-y divide-[var(--border)]">{project.evidence.map((item) => <li key={item.id} className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between"><div><strong className="text-sm">{item.name}</strong><p className="mt-1 text-xs text-slate-500">{item.id} · {item.kind}</p></div><span className={item.availability === "Disponível" ? "text-sm font-semibold text-emerald-700" : "text-sm font-semibold text-amber-700"}>{item.availability}</span></li>)}</ul>
+            </section>
+          </div>
+
+          <aside className="space-y-5 lg:sticky lg:top-5 lg:self-start">
+            <section aria-labelledby="checklist-title" className="rounded-2xl border border-[var(--border)] bg-white p-5 shadow-sm">
+              <h2 id="checklist-title" className="text-lg font-bold text-[var(--ink)]">Conferência</h2>
+              <ul className="mt-4 space-y-3 text-sm">
+                <li className="flex gap-3"><span aria-hidden className={canPublish ? "text-emerald-700" : "text-red-700"}>{canPublish ? "✓" : "!"}</span><span>Narrativa com contexto suficiente.</span></li>
+                <li className="flex gap-3"><span aria-hidden className="text-emerald-700">✓</span><span>{project.activities.length} atividade(s) identificada(s).</span></li>
+                <li className="flex gap-3"><span aria-hidden className={pendingEvidence.length ? "text-amber-700" : "text-emerald-700"}>{pendingEvidence.length ? "!" : "✓"}</span><span>{pendingEvidence.length ? `${pendingEvidence.length} evidência(s) pendente(s), com situação preservada.` : "Evidências disponíveis."}</span></li>
+                <li className="flex gap-3"><span aria-hidden className={undocumentedPayments.length ? "text-amber-700" : "text-emerald-700"}>{undocumentedPayments.length ? "!" : "✓"}</span><span>{undocumentedPayments.length ? `${undocumentedPayments.length} pagamento(s) informado(s) sem arquivo.` : "Nenhum pagamento manual sem arquivo."}</span></li>
+                <li className="flex gap-3"><span aria-hidden className={uncertainReferences.length ? "text-amber-700" : "text-emerald-700"}>{uncertainReferences.length ? "!" : "✓"}</span><span>{uncertainReferences.length ? `${uncertainReferences.length} referência(s) sem vínculo forte; não serão tratadas como comprovação.` : "Relações financeiras identificadas."}</span></li>
+              </ul>
+            </section>
+
+            <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+              <h2 className="font-bold text-blue-950">Publicação imutável</h2>
+              <p className="mt-2 text-sm leading-6 text-blue-900">Depois de publicar, esta versão não poderá ser alterada. Correções futuras criarão uma nova versão.</p>
+              <form action={publish} className="mt-5">
+                <label className="mb-4 flex items-start gap-3 rounded-xl border border-blue-200 bg-white p-3 text-sm leading-5 text-blue-950">
+                  <input type="checkbox" name="acknowledgeCaveats" value="yes" required className="mt-1 size-4 shrink-0" />
+                  <span>Conferi esta composição e entendi os alertas acima. Itens pendentes e relações incertas continuarão identificados como tais.</span>
+                </label>
+                <SubmitButton idleLabel={publications.length ? "Publicar nova versão" : "Publicar versão 1"} pendingLabel="Publicando…" />
+              </form>
+              {!canPublish ? <p className="mt-3 text-xs font-semibold text-red-800">Amplie a narrativa antes de publicar.</p> : null}
+            </section>
+          </aside>
+        </div>
+      </main>
+    </AppShell>
+  );
+}

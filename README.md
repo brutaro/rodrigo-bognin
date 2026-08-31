@@ -13,16 +13,19 @@ Este projeto vive exclusivamente em `RODRIGO-BOGNIN/PLANO_B_TRIA/`.
 
 ## Estado atual
 
-A primeira fatia é uma consulta navegável com dados totalmente fictícios:
+A fatia local usa somente dados fictícios e oferece:
 
-- lista e busca de projetos;
-- página do projeto;
-- narrativa;
-- atividades e medições;
-- referências financeiras sem soma indevida;
-- evidências.
+- lista, busca e consulta de projetos;
+- narrativa editável com histórico;
+- atividades, BMs e medições sem confundir medição com pagamento;
+- referências importadas separadas de cadastros manuais;
+- pagamentos informados sem presumir comprovante;
+- conferência com alertas e confirmação explícita;
+- publicação imutável, versionada e protegida por hash;
+- exportações HTML autônomo e CSV protegido contra fórmulas;
+- verificação de integridade antes de exibir ou exportar.
 
-Nenhum dado real foi carregado. Edição, banco, R2 e publicação serão adicionados em fatias posteriores.
+Uploads, autenticação, PostgreSQL, Railway e R2 ainda estão desativados. Consulte [`docs/runtime-boundaries.md`](docs/runtime-boundaries.md).
 
 ## Executar
 
@@ -30,24 +33,29 @@ Requer Node.js 22.
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
 Abra `http://localhost:3000`.
 
+As gravações fictícias só funcionam com `TRIA_DEMO_WRITES=enabled` no arquivo local.
+
 ## Validar
 
 ```bash
-npm run lint
-npm run build
+npm run check
 ```
+
+Esse comando executa a suíte automatizada, lint, verificação TypeScript e build de produção.
 
 ## Decisões simples
 
 - Uma conta: Rodrigo.
-- Um armazenamento operacional: R2 privado.
-- Limite interno conservador: 9 GB.
-- Sem OCI ou outro provedor de referência externa.
+- Um armazenamento operacional futuro: R2 privado.
+- Limite interno conservador futuro: aproximadamente 9 GB.
+- Sem OCI ou outro provedor.
 - Sem upgrade automático ou cobrança não aprovada.
 - Sem parsing ou execução de PBIX, macros, scripts ou consultas de arquivos enviados.
-- Relação, alocação, valor e pagamento permanecem conceitos distintos.
+- Medição, nota, referência, valor informado e pagamento permanecem conceitos distintos.
+- Dados reais exigem ambiente privado e autorização expressa.

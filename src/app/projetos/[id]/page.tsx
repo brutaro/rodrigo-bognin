@@ -9,6 +9,7 @@ import {
   financialOrigins,
   formatBrlFromCents,
   manualFinancialKinds,
+  listDemoProjectPublications,
   readDemoProjectDraft,
 } from "@/lib/demo-workspace";
 import { addFinancialEntryAction, saveNarrativeAction } from "./actions";
@@ -32,6 +33,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
   const draft = await readDemoProjectDraft(project.id);
+  const latestPublication = (await listDemoProjectPublications(project.id))[0];
   const saveNarrative = saveNarrativeAction.bind(null, project.id);
   const addFinancialEntry = addFinancialEntryAction.bind(null, project.id);
 
@@ -54,9 +56,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 {draft.updatedAt ? `Salvo em ${displayDate(draft.updatedAt)}` : "Ainda sem alterações demonstrativas"}
               </p>
             </div>
-            <button type="button" disabled className="h-11 shrink-0 cursor-not-allowed rounded-xl border border-slate-300 bg-slate-100 px-4 text-sm font-semibold text-slate-500" title="Disponível na etapa de prévia">
-              Ver como ficará
-            </button>
+            <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row">
+              {latestPublication ? <Link href={`/publicacoes/${latestPublication.id}`} className="inline-flex h-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-900 hover:bg-blue-100">Ver publicação V{latestPublication.version}</Link> : null}
+              <Link href={`/projetos/${project.id}/conferir`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-white hover:bg-blue-900">Ver como ficará</Link>
+            </div>
           </div>
         </section>
 

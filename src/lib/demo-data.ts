@@ -4,6 +4,8 @@ export type Project = {
   id: string;
   name: string;
   period: string;
+  periodStart: string;
+  periodEnd: string;
   status: ProjectStatus;
   narrative: string;
   activities: Array<{
@@ -35,6 +37,8 @@ export const demoProjects: Project[] = [
     id: "demonstracao-continuidade",
     name: "Projeto demonstrativo — continuidade operacional",
     period: "06/2024 a 11/2025",
+    periodStart: "2024-06-01",
+    periodEnd: "2025-11-30",
     status: "Pronto para revisar",
     narrative:
       "Conduzi o acompanhamento das atividades e organizei as evidências para tornar o histórico do projeto fácil de consultar. Este texto é fictício e serve somente para validar a experiência de edição.",
@@ -91,6 +95,8 @@ export const demoProjects: Project[] = [
     id: "demonstracao-processos",
     name: "Projeto demonstrativo — melhoria de processos",
     period: "01/2025 a 08/2025",
+    periodStart: "2025-01-01",
+    periodEnd: "2025-08-31",
     status: "Em trabalho",
     narrative:
       "Mapeei o processo atual, identifiquei pontos de atenção e organizei uma proposta de melhoria. Conteúdo fictício.",
@@ -126,6 +132,8 @@ export const demoProjects: Project[] = [
     id: "demonstracao-comunicacao",
     name: "Projeto demonstrativo — comunicação interna",
     period: "03/2025 a 10/2025",
+    periodStart: "2025-03-01",
+    periodEnd: "2025-10-31",
     status: "Publicado",
     narrative:
       "Estruturei uma comunicação clara para apoiar as equipes durante uma mudança interna. Conteúdo fictício.",

@@ -9,3 +9,9 @@
 - A primeira fatia usa somente dados fictícios.
 - Segurança mínima, proveniência e uma restauração verificável permanecem obrigatórias.
 - Automatização nunca confirma relação financeira ou pagamento sem decisão registrada de Rodrigo.
+- A publicação demonstrativa é append-only e uma correção gera nova versão.
+- Uma composição idêntica não gera versão duplicada.
+- A prévia e a publicação são vinculadas por SHA-256; uma edição exige nova conferência.
+- HTML e CSV usam somente o snapshot publicado e verificado.
+- A persistência JSON é apenas local, de processo único e sem dados reais.
+- PostgreSQL, Railway, autenticação e R2 dependem de decisão expressa antes da ativação.
