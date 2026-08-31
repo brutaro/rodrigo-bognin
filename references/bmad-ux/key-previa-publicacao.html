@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TRIA — Prévia da publicação</title>
+  <style>
+    /*
+      GOVERNANÇA DESTA TELA
+      DESIGN.md: Brand & Style; Colors; Typography; Layout & Spacing; Components
+      (global-header, status-badge, reader-publication-header, financial-summary,
+      document-row, primary-button e secondary-button).
+      EXPERIENCE.md: Information Architecture (Prévia da publicação); State Patterns;
+      Publicação e Projeção Final — Prévia, autorização e geração; regra canônica do leitor;
+      Interaction Primitives; Accessibility Floor; Responsive & Platform; UJ-3 passos 4–5.
+      O renderer final é isolado da shell interna. Os spines prevalecem em qualquer conflito.
+    */
+    * { box-sizing:border-box; }
+    html { min-width:320px; background:#e7ebe7; color:#183329; font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+    body { margin:0; overflow-x:hidden; }
+    button,input { font:inherit; }
+    button { cursor:default; }
+    .presentation { width:min(1440px,100%); margin:0 auto; padding:34px 28px 64px; }
+    .presentation-head { width:min(1320px,100%); margin:0 auto 22px; display:grid; grid-template-columns:112px minmax(0,1fr) auto; gap:24px; align-items:end; }
+    .sheet-number { color:#CB5C2B; font-size:52px; font-weight:900; line-height:.8; letter-spacing:-.07em; }
+    .presentation-head h1 { margin:0 0 6px; font-size:clamp(28px,3vw,38px); line-height:1; letter-spacing:-.045em; }
+    .presentation-head p { max-width:790px; margin:0; color:#66726C; }
+    .notice { max-width:300px; padding:10px 12px; border-left:3px solid #CB5C2B; background:rgba(255,255,255,.68); color:#66726C; font-size:12px; }
+    .notice strong { color:#183329; }
+    .frame-label { width:min(1320px,100%); margin:28px auto 10px; display:flex; align-items:center; gap:12px; color:#52635B; font-size:11px; font-weight:850; letter-spacing:.12em; text-transform:uppercase; }
+    .frame-label::after { content:""; height:1px; flex:1; background:#C9D0CB; }
+    .browser { --bg:#F5F5EF; --surface:#FFFFFF; --raised:#FBFAF5; --text:#183329; --muted:#66726C; --border:#D8DDD7; --strong:#B1BDB6; --control:#66726C; --primary:#174D3B; --on-primary:#FFFFFF; --primary-soft:#E5F0EA; --copper:#CB5C2B; --copper-soft:#FFF0DE; --focus:#CB5C2B; --success:#267A55; --success-soft:#E5F3EB; --report-head:#174D3B; --report-head-text:#FFFFFF; --bar:#E7E9E4; --dot:#AAB4AD; --shadow:rgba(24,51,41,.14); width:min(1320px,100%); margin:0 auto; overflow:hidden; border:1px solid var(--strong); background:var(--surface); box-shadow:0 24px 70px var(--shadow); }
+    .browser.dark { --bg:#101713; --surface:#18231D; --raised:#1D2B24; --text:#F1F5F1; --muted:#AEBBAF; --border:#33463A; --strong:#5A7462; --control:#5A7462; --primary:#7AC4A2; --on-primary:#0E291C; --primary-soft:#1B382B; --copper:#F08A59; --copper-soft:#3B2B18; --focus:#F08A59; --success:#72D3A0; --success-soft:#183B2A; --report-head:#18231D; --report-head-text:#F1F5F1; --bar:#0B110E; --dot:#486052; --shadow:rgba(0,0,0,.38); }
+    .browser-bar { height:36px; display:flex; align-items:center; gap:7px; padding:0 14px; background:var(--bar); border-bottom:1px solid var(--border); }
+    .browser-dot { width:8px; height:8px; border-radius:50%; background:var(--dot); }
+    .browser-address { width:34%; height:18px; margin:0 auto; border:1px solid var(--border); border-radius:4px; background:var(--raised); }
+    .app { min-height:1080px; background:var(--bg); color:var(--text); }
+    .browser :where(a,button,input):focus-visible { outline:3px solid var(--focus); outline-offset:3px; }
+    .app-header { min-height:72px; display:flex; align-items:stretch; padding:0 32px; background:var(--surface); border-bottom:1px solid var(--border); }
+    .brand { display:flex; align-items:center; gap:10px; min-width:130px; color:var(--text); font-size:19px; font-weight:900; letter-spacing:.035em; text-decoration:none; }
+    .brand img { width:35px; height:35px; object-fit:contain; }
+    .primary-nav { display:flex; align-items:stretch; gap:2px; margin-left:35px; }
+    .nav-item { position:relative; display:flex; align-items:center; min-height:44px; padding:0 17px; border:0; background:transparent; color:var(--muted); font-size:13px; font-weight:700; white-space:nowrap; }
+    .nav-item.active { color:var(--text); }
+    .nav-item.active::after { content:""; position:absolute; right:17px; bottom:-1px; left:17px; height:3px; background:var(--copper); }
+    .header-actions { display:flex; align-items:center; gap:10px; margin-left:auto; }
+    .global-add,.account { min-height:44px; padding:0 14px; font-size:12px; font-weight:850; }
+    .global-add { border:1px solid var(--primary); background:var(--primary); color:var(--on-primary); }
+    .account { border:1px solid var(--control); background:var(--surface); color:var(--text); }
+    [hidden] { display:none !important; }
+    .workspace { width:min(1190px,calc(100% - 64px)); margin:0 auto; padding:26px 0 42px; }
+    .preview-shell-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px; align-items:end; padding:18px 20px; border-left:4px solid var(--copper); background:var(--copper-soft); }
+    .preview-kicker { margin:0 0 5px; color:var(--text); font-size:11px; font-weight:900; letter-spacing:.12em; text-transform:uppercase; }
+    .preview-shell-head h2 { margin:0; font-size:clamp(25px,3vw,34px); line-height:1.05; letter-spacing:-.04em; }
+    .preview-shell-head p { margin:7px 0 0; color:var(--muted); font-size:12px; }
+    .save-state { color:var(--muted); font-size:11px; font-weight:800; white-space:nowrap; }
+    .save-state::before { content:""; display:inline-block; width:7px; height:7px; margin-right:7px; border-radius:50%; background:var(--success); }
+    .cut-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:12px; border:1px solid var(--border); background:var(--border); gap:1px; }
+    .cut-item { padding:13px 15px; background:var(--surface); }
+    .cut-item span { display:block; color:var(--muted); font-size:10px; font-weight:850; letter-spacing:.06em; text-transform:uppercase; }
+    .cut-item strong { display:block; margin-top:4px; font-size:13px; }
+    .partial { color:var(--primary); }
+    .preview-grid { display:grid; grid-template-columns:minmax(0,1fr) 180px; gap:14px; align-items:start; margin-top:18px; }
+    .report { min-width:0; border:1px solid var(--strong); background:var(--surface); }
+    .report-head { padding:28px 30px 24px; border-top:4px solid var(--copper); background:var(--report-head); color:var(--report-head-text); }
+    .report-brand { display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .report-lockup { display:flex; align-items:center; gap:10px; font-size:17px; font-weight:900; letter-spacing:.04em; }
+    .report-lockup img { width:32px; height:32px; object-fit:contain; }
+    .report-version { font-size:11px; font-weight:800; }
+    .report-head h3 { margin:25px 0 8px; font-size:clamp(28px,4vw,44px); line-height:.98; letter-spacing:-.05em; }
+    .report-head > p { max-width:720px; margin:0; color:#D2E4DA; }
+    .dark .report-head > p { color:var(--muted); }
+    .report-meta { display:flex; flex-wrap:wrap; gap:16px 28px; margin-top:22px; padding-top:16px; border-top:1px solid rgba(255,255,255,.24); font-size:11px; }
+    .dark .report-meta { border-color:var(--border); }
+    .report-meta b { display:block; margin-bottom:3px; color:#9ED5BB; font-size:9px; letter-spacing:.1em; text-transform:uppercase; }
+    .dark .report-meta b { color:var(--primary); }
+    .reader-tools { padding:16px 24px; border-bottom:1px solid var(--border); background:var(--raised); }
+    .reader-tools label { display:block; margin-bottom:6px; font-size:11px; font-weight:850; }
+    .reader-search { position:relative; }
+    .reader-search input { width:100%; min-height:48px; padding:0 16px 0 45px; border:1px solid var(--control); border-radius:0; background:var(--surface); color:var(--text); }
+    .reader-search input::placeholder { color:var(--muted); opacity:1; }
+    .reader-search-icon { position:absolute; top:15px; left:16px; width:15px; height:15px; border:2px solid var(--copper); border-radius:50%; }
+    .reader-search-icon::after { content:""; position:absolute; right:-6px; bottom:-3px; width:7px; height:2px; background:var(--copper); transform:rotate(45deg); }
+    .report-body { padding:24px 30px 30px; }
+    .section-label { margin:0 0 11px; color:var(--copper); font-size:10px; font-weight:900; letter-spacing:.13em; text-transform:uppercase; }
+    .summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border:1px solid var(--border); background:var(--border); gap:1px; }
+    .metric { min-width:0; padding:16px; background:var(--raised); }
+    .metric span { display:block; color:var(--muted); font-size:10px; font-weight:800; text-transform:uppercase; }
+    .metric strong { display:block; margin-top:7px; font-size:20px; line-height:1.1; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+    .project-index { display:flex; flex-wrap:wrap; gap:8px; margin:22px 0; }
+    .project-index a { min-height:44px; display:inline-flex; align-items:center; padding:0 12px; border:1px solid var(--control); color:var(--primary); font-size:11px; font-weight:800; text-decoration:none; }
+    .project-index a.active { border-color:var(--primary); background:var(--primary-soft); color:var(--text); }
+    .project-detail { padding-top:21px; border-top:1px solid var(--border); }
+    .project-detail h4 { margin:0; font-size:25px; line-height:1.08; letter-spacing:-.03em; }
+    .project-sub { margin:7px 0 0; color:var(--muted); font-size:12px; }
+    .narrative { max-width:780px; margin:18px 0 0; font-size:14px; line-height:1.7; }
+    .activities { margin-top:22px; padding:17px 18px; border-left:3px solid var(--copper); background:var(--raised); }
+    .activities h5,.finance h5,.documents h5 { margin:0 0 9px; font-size:13px; }
+    .activities ul { margin:0; padding-left:18px; color:var(--muted); }
+    .finance { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1px; margin-top:18px; border:1px solid var(--border); background:var(--border); }
+    .finance article { min-width:0; padding:16px; background:var(--surface); }
+    .finance strong { display:block; font-size:19px; font-variant-numeric:tabular-nums; }
+    .finance span { display:block; margin-top:5px; color:var(--muted); font-size:11px; }
+    .documents { margin-top:20px; }
+    .document-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px; align-items:center; min-height:60px; padding:10px 0; border-top:1px solid var(--border); }
+    .document-row strong { display:block; font-size:12px; overflow-wrap:anywhere; }
+    .document-row span { color:var(--muted); font-size:10px; }
+    .document-row a { min-height:44px; display:inline-flex; align-items:center; color:var(--primary); font-size:11px; font-weight:850; }
+    .internal-tools { position:sticky; top:12px; border-top:3px solid var(--copper); background:var(--surface); }
+    .internal-tools p { margin:0; padding:13px; color:var(--muted); font-size:10px; }
+    .correct { width:100%; min-height:48px; padding:0 12px; border:1px solid var(--primary); background:var(--surface); color:var(--primary); font-size:11px; font-weight:850; text-align:left; }
+    .shell-actions { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:18px; padding:16px 18px; border:1px solid var(--border); background:var(--surface); }
+    .shell-actions p { margin:0; color:var(--muted); font-size:12px; }
+    .button-row { display:flex; gap:9px; }
+    .primary,.secondary { min-height:44px; padding:0 16px; font-weight:850; }
+    .primary { border:1px solid var(--primary); background:var(--primary); color:var(--on-primary); }
+    .secondary { border:1px solid var(--primary); background:var(--surface); color:var(--primary); }
+    .mode-note { width:min(1320px,100%); margin:10px auto 0; color:#64716B; font-size:11px; }
+    @media (max-width:980px) {
+      .presentation { padding:24px 16px 48px; }
+      .presentation-head { grid-template-columns:74px minmax(0,1fr); }
+      .notice { grid-column:2; max-width:none; }
+      .app-header { flex-wrap:wrap; padding:8px 20px 0; }
+      .brand { height:52px; }
+      .primary-nav { order:3; width:100%; min-height:48px; margin:0; border-top:1px solid var(--border); }
+      .nav-item { flex:1; justify-content:center; padding:0 8px; }
+      .workspace { width:min(100% - 36px,1190px); }
+      .preview-grid { grid-template-columns:1fr; }
+      .internal-tools { position:static; display:grid; grid-template-columns:1fr 180px; align-items:center; }
+    }
+    @media (max-width:640px) {
+      .presentation-head { grid-template-columns:1fr; gap:10px; }
+      .notice { grid-column:1; }
+      .sheet-number { font-size:34px; }
+      .browser-address { display:none; }
+      .app-header { padding:8px 12px 0; }
+      .brand { min-width:105px; }
+      .brand img { width:30px; height:30px; }
+      .header-actions { gap:6px; }
+      .global-add,.account { padding:0 8px; }
+      .primary-nav { display:grid; grid-template-columns:repeat(4,1fr); }
+      .nav-item { min-width:0; font-size:11px; }
+      .workspace { width:min(100% - 24px,1190px); }
+      .preview-shell-head { grid-template-columns:1fr; }
+      .cut-summary,.summary,.finance { grid-template-columns:1fr 1fr; }
+      .report-head,.report-body { padding-right:18px; padding-left:18px; }
+      .report-brand { align-items:flex-start; flex-direction:column; }
+      .internal-tools { grid-template-columns:1fr; }
+      .shell-actions { align-items:stretch; flex-direction:column; }
+      .button-row { display:grid; grid-template-columns:1fr; }
+      .primary,.secondary { width:100%; }
+    }
+    @media (max-width:420px) { .cut-summary,.summary,.finance { grid-template-columns:1fr; } }
+    @media (forced-colors:active) { .browser :where(a,button,input):focus-visible { outline:3px solid Highlight; } }
+  </style>
+</head>
+<body>
+  <main class="presentation">
+    <header class="presentation-head"><div class="sheet-number">03</div><div><h1>TRIA · prévia da publicação</h1><p>A shell interna identifica o rascunho e oferece correção/autorização; dentro dela, a projeção final usa o mesmo renderer que Paulo receberá.</p></div><aside class="notice"><strong>Separação estrutural.</strong> Controles de Rodrigo ficam fora do DOM exportável.</aside></header>
+
+    <div class="frame-label">Frame A · modo claro · composição pronta para autorização</div>
+    <section class="browser" aria-label="Prévia da publicação em modo claro">
+      <div class="browser-bar" aria-hidden="true"><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-address"></span></div>
+      <div class="app">
+        <!-- DESIGN: global-header. EXPERIENCE: ambiente interno de trabalho; Publicações ativa. -->
+        <header class="app-header"><a class="brand" href="#previa-clara" aria-label="TRIA, início"><img src="tria-icon-refined-v1.png" alt=""><span>TRIA</span></a><nav class="primary-nav" aria-label="Navegação principal"><button class="nav-item" type="button">Início</button><button class="nav-item" type="button">Projetos</button><button class="nav-item" type="button">Documentos</button><button class="nav-item active" type="button" aria-current="page">Publicações</button></nav><div class="header-actions"><button class="global-add" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="adicionar-claro">Adicionar <span aria-hidden="true">▾</span></button><div id="adicionar-claro" role="menu" hidden></div><button class="account" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="conta-claro">Rodrigo <span aria-hidden="true">▾</span></button><div id="conta-claro" role="menu" hidden></div></div></header>
+        <div class="workspace" id="previa-clara">
+          <!-- EXPERIENCE: shell de prévia interna; não pertence à exportação. -->
+          <header class="preview-shell-head"><div><p class="preview-kicker">Prévia — ainda não publicada</p><h2>Confira exatamente o que será apresentado.</h2><p>Você pode corrigir um item sem perder esta preparação.</p></div><span class="save-state" role="status">Rascunho salvo às 14:38</span></header>
+          <section class="cut-summary" aria-label="Recorte da prévia"><div class="cut-item"><span>Data de corte</span><strong>31 de julho de 2025</strong></div><div class="cut-item"><span>Projetos</span><strong>3 de 59</strong></div><div class="cut-item"><span>Recorte</span><strong class="partial">Publicação parcial</strong></div><div class="cut-item"><span>Versão em preparo</span><strong>1.4</strong></div></section>
+          <div class="preview-grid">
+            <!-- INÍCIO DO DOM EXPORTÁVEL — renderer reader-publication-v1. -->
+            <!-- DESIGN: reader-publication-header, financial-summary e document-row. EXPERIENCE: projeção final default-deny. -->
+            <article class="report" data-renderer="reader-publication-v1" aria-labelledby="titulo-relatorio-claro">
+              <header class="report-head"><div class="report-brand"><div class="report-lockup"><img src="tria-icon-refined-v1.png" alt=""><span>TRIA</span></div><span class="report-version">Versão 1.4</span></div><h3 id="titulo-relatorio-claro">Prestação de contas</h3><p>Projetos e informações apresentados no recorte autorizado.</p><div class="report-meta"><span><b>Data de corte</b>31 de julho de 2025</span><span><b>Cobertura</b>3 de 59 projetos em detalhe</span><span><b>Recorte</b>Publicação parcial</span></div></header><form class="reader-tools" role="search"><label for="busca-previa-clara">Pesquisar nesta publicação</label><div class="reader-search"><span class="reader-search-icon" aria-hidden="true"></span><input id="busca-previa-clara" type="search" placeholder="Busque um projeto nesta versão"></div></form>
+              <div class="report-body"><p class="section-label">Resumo da publicação</p><section class="summary" aria-label="Resumo"><div class="metric"><span>Projetos executados</span><strong>3</strong></div><div class="metric"><span>Período</span><strong>fev–jul 2025</strong></div><div class="metric"><span>Horas</span><strong>286 h</strong></div><div class="metric"><span>Custo dos projetos</span><strong>R$ 57.480</strong></div><div class="metric"><span>Notas apresentadas</span><strong>4</strong></div><div class="metric"><span>Documentos disponíveis</span><strong>11</strong></div></section><nav class="project-index" aria-label="Projetos desta publicação"><a class="active" href="#detalhe-claro">Desenvolvimento APP</a><a href="#">Plano de Cargos e Salários</a><a href="#">Pesquisa de Clima — Fazenda Veneza</a></nav><section class="project-detail" id="detalhe-claro"><p class="section-label">Projeto apresentado</p><h4>Desenvolvimento APP</h4><p class="project-sub">fevereiro a julho de 2025 · 128 horas</p><p class="narrative">Eu organizei as etapas do Desenvolvimento APP, acompanhei as atividades registradas nos BMs e consolidei as entregas realizadas ao longo do período. O trabalho reuniu informações antes separadas e permitiu apresentar o que foi feito, quando aconteceu e quais valores estão relacionados ao projeto.</p><section class="activities"><h5>Atividades e entregas</h5><ul><li>Organização das etapas do projeto</li><li>Acompanhamento das entregas</li><li>Consolidação das informações para apresentação</li></ul></section><section class="finance" aria-label="Valores apresentados"><article><h5>Custo do projeto</h5><strong>R$ 24.960,00</strong><span>Período apresentado</span></article><article><h5>Notas apresentadas</h5><strong>R$ 18.500,00</strong><span>2 notas relacionadas</span></article><article><h5>Pagamentos informados</h5><strong>R$ 12.000,00</strong><span>Valor apresentado</span></article></section><section class="documents"><h5>Documentos disponíveis</h5><div class="document-row"><div><strong>BM — Desenvolvimento APP.xlsx</strong><span>Planilha · 184 KB</span></div><a href="#">Baixar</a></div><div class="document-row"><div><strong>Resumo executivo — Desenvolvimento APP.pdf</strong><span>PDF · 1,8 MB</span></div><a href="#">Visualizar</a></div></section></section></div>
+            </article>
+            <!-- FIM DO DOM EXPORTÁVEL. -->
+            <!-- EXPERIENCE: ação interna de Rodrigo, irmã da projeção; nunca exportada. -->
+            <aside class="internal-tools" aria-label="Ferramentas internas da prévia"><p>Esta ação pertence ao ambiente de trabalho.</p><button class="correct" type="button">Corrigir este item →</button></aside>
+          </div>
+          <!-- EXPERIENCE: autorização exclusiva de Rodrigo, fora do renderer final. -->
+          <footer class="shell-actions"><p>Ao autorizar, você confirma esta composição antes da geração dos arquivos.</p><div class="button-row"><button class="secondary" type="button">Voltar</button><button class="primary" type="button">Autorizar publicação</button></div></footer>
+        </div>
+      </div>
+    </section>
+    <p class="mode-note">A borda cobre e a faixa “ainda não publicada” pertencem à shell; o relatório começa e termina dentro do artigo exportável.</p>
+
+    <div class="frame-label">Frame B · modo escuro · mesma projeção</div>
+    <section class="browser dark" aria-label="Prévia da publicação em modo escuro">
+      <div class="browser-bar" aria-hidden="true"><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-address"></span></div>
+      <div class="app">
+        <!-- Mesmas regiões e regras do frame claro; somente tokens -dark. -->
+        <header class="app-header"><a class="brand" href="#previa-escura" aria-label="TRIA, início"><img src="tria-icon-refined-v1.png" alt=""><span>TRIA</span></a><nav class="primary-nav" aria-label="Navegação principal"><button class="nav-item" type="button">Início</button><button class="nav-item" type="button">Projetos</button><button class="nav-item" type="button">Documentos</button><button class="nav-item active" type="button" aria-current="page">Publicações</button></nav><div class="header-actions"><button class="global-add" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="adicionar-escuro">Adicionar <span aria-hidden="true">▾</span></button><div id="adicionar-escuro" role="menu" hidden></div><button class="account" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="conta-escuro">Rodrigo <span aria-hidden="true">▾</span></button><div id="conta-escuro" role="menu" hidden></div></div></header>
+        <div class="workspace" id="previa-escura"><header class="preview-shell-head"><div><p class="preview-kicker">Prévia — ainda não publicada</p><h2>Confira exatamente o que será apresentado.</h2><p>Você pode corrigir um item sem perder esta preparação.</p></div><span class="save-state" role="status">Rascunho salvo às 14:38</span></header><section class="cut-summary" aria-label="Recorte da prévia"><div class="cut-item"><span>Data de corte</span><strong>31 de julho de 2025</strong></div><div class="cut-item"><span>Projetos</span><strong>3 de 59</strong></div><div class="cut-item"><span>Recorte</span><strong class="partial">Publicação parcial</strong></div><div class="cut-item"><span>Versão em preparo</span><strong>1.4</strong></div></section><div class="preview-grid">
+          <!-- INÍCIO DO DOM EXPORTÁVEL — renderer reader-publication-v1, modo escuro. -->
+          <article class="report" data-renderer="reader-publication-v1" aria-labelledby="titulo-relatorio-escuro"><header class="report-head"><div class="report-brand"><div class="report-lockup"><img src="tria-icon-refined-v1.png" alt=""><span>TRIA</span></div><span class="report-version">Versão 1.4</span></div><h3 id="titulo-relatorio-escuro">Prestação de contas</h3><p>Projetos e informações apresentados no recorte autorizado.</p><div class="report-meta"><span><b>Data de corte</b>31 de julho de 2025</span><span><b>Cobertura</b>3 de 59 projetos em detalhe</span><span><b>Recorte</b>Publicação parcial</span></div></header><form class="reader-tools" role="search"><label for="busca-previa-escura">Pesquisar nesta publicação</label><div class="reader-search"><span class="reader-search-icon" aria-hidden="true"></span><input id="busca-previa-escura" type="search" placeholder="Busque um projeto nesta versão"></div></form><div class="report-body"><p class="section-label">Resumo da publicação</p><section class="summary" aria-label="Resumo"><div class="metric"><span>Projetos executados</span><strong>3</strong></div><div class="metric"><span>Período</span><strong>fev–jul 2025</strong></div><div class="metric"><span>Horas</span><strong>286 h</strong></div><div class="metric"><span>Custo dos projetos</span><strong>R$ 57.480</strong></div><div class="metric"><span>Notas apresentadas</span><strong>4</strong></div><div class="metric"><span>Documentos disponíveis</span><strong>11</strong></div></section><nav class="project-index" aria-label="Projetos desta publicação"><a class="active" href="#detalhe-escuro">Desenvolvimento APP</a><a href="#">Plano de Cargos e Salários</a><a href="#">Pesquisa de Clima — Fazenda Veneza</a></nav><section class="project-detail" id="detalhe-escuro"><p class="section-label">Projeto apresentado</p><h4>Desenvolvimento APP</h4><p class="project-sub">fevereiro a julho de 2025 · 128 horas</p><p class="narrative">Eu organizei as etapas do Desenvolvimento APP, acompanhei as atividades registradas nos BMs e consolidei as entregas realizadas ao longo do período. O trabalho reuniu informações antes separadas e permitiu apresentar o que foi feito, quando aconteceu e quais valores estão relacionados ao projeto.</p><section class="activities"><h5>Atividades e entregas</h5><ul><li>Organização das etapas do projeto</li><li>Acompanhamento das entregas</li><li>Consolidação das informações para apresentação</li></ul></section><section class="finance" aria-label="Valores apresentados"><article><h5>Custo do projeto</h5><strong>R$ 24.960,00</strong><span>Período apresentado</span></article><article><h5>Notas apresentadas</h5><strong>R$ 18.500,00</strong><span>2 notas relacionadas</span></article><article><h5>Pagamentos informados</h5><strong>R$ 12.000,00</strong><span>Valor apresentado</span></article></section><section class="documents"><h5>Documentos disponíveis</h5><div class="document-row"><div><strong>BM — Desenvolvimento APP.xlsx</strong><span>Planilha · 184 KB</span></div><a href="#">Baixar</a></div><div class="document-row"><div><strong>Resumo executivo — Desenvolvimento APP.pdf</strong><span>PDF · 1,8 MB</span></div><a href="#">Visualizar</a></div></section></section></div></article>
+          <!-- FIM DO DOM EXPORTÁVEL. -->
+          <aside class="internal-tools" aria-label="Ferramentas internas da prévia"><p>Esta ação pertence ao ambiente de trabalho.</p><button class="correct" type="button">Corrigir este item →</button></aside></div><footer class="shell-actions"><p>Ao autorizar, você confirma esta composição antes da geração dos arquivos.</p><div class="button-row"><button class="secondary" type="button">Voltar</button><button class="primary" type="button">Autorizar publicação</button></div></footer></div>
+      </div>
+    </section>
+    <p class="mode-note">A projeção preserva conteúdo e hierarquia no escuro; controles internos continuam estruturalmente externos.</p>
+  </main>
+</body>
+</html>

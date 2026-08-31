@@ -1,0 +1,40 @@
+{
+  "copies": [
+    {
+      "source": "RODRIGO-BOGNIN/_bmad-output/planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/DESIGN.md",
+      "copy": "RODRIGO-BOGNIN/PLANO_B_TRIA/references/bmad-ux/DESIGN.md",
+      "sha256": "1a539ab9118b4821a563ff67b585a352a38659c15488bb9c46cb58ab97303cd4",
+      "size": 30936
+    },
+    {
+      "source": "RODRIGO-BOGNIN/_bmad-output/planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/EXPERIENCE.md",
+      "copy": "RODRIGO-BOGNIN/PLANO_B_TRIA/references/bmad-ux/EXPERIENCE.md",
+      "sha256": "f5b782ab81ebb42a617276e3ff7a07a8e68bd491ab83f0ef5b9123df8787aaac",
+      "size": 48613
+    },
+    {
+      "source": "RODRIGO-BOGNIN/_bmad-output/planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/mockups/key-inicio-navegacao.html",
+      "copy": "RODRIGO-BOGNIN/PLANO_B_TRIA/references/bmad-ux/key-inicio-navegacao.html",
+      "sha256": "f7ca29088ce71443d7bdb7e38144d5659a5ddc05144bdfbbb39b1a3fbd69e8c0",
+      "size": 25149
+    },
+    {
+      "source": "RODRIGO-BOGNIN/_bmad-output/planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/mockups/key-projeto-trabalho.html",
+      "copy": "RODRIGO-BOGNIN/PLANO_B_TRIA/references/bmad-ux/key-projeto-trabalho.html",
+      "sha256": "221a074e6882a97a038de880973bd517f0ec70a44decdb89c515560cc80783f9",
+      "size": 43575
+    },
+    {
+      "source": "RODRIGO-BOGNIN/_bmad-output/planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/mockups/key-previa-publicacao.html",
+      "copy": "RODRIGO-BOGNIN/PLANO_B_TRIA/references/bmad-ux/key-previa-publicacao.html",
+      "sha256": "fd8e0e9150f14115c40ba1fb77ba412c97efe08dbd6b5a0e0fcea79fa95c9ac5",
+      "size": 27846
+    },
+    {
+      "source": "RODRIGO-BOGNIN/_bmad-output/planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/mockups/key-publicacao-oficial.html",
+      "copy": "RODRIGO-BOGNIN/PLANO_B_TRIA/references/bmad-ux/key-publicacao-oficial.html",
+      "sha256": "ffa1973aedf0211cf14a7fddc2c73a46a3d4234427e5630ea509a03db59538a7",
+      "size": 22121
+    }
+  ]
+}

@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TRIA — Início e navegação</title>
+  <style>
+    /*
+      GOVERNANÇA DESTA TELA
+      DESIGN.md: Brand & Style; Colors; Typography; Layout & Spacing; Shapes; Components.
+      EXPERIENCE.md: Foundation; Information Architecture; Voice and Tone; Component Patterns
+      (cabeçalho, retomada, busca, ações rápidas, lista e pendências); State Patterns (rascunho);
+      Responsive & Platform; Accessibility Floor; Key Flows (entrada e retomada da jornada âncora).
+      Enquanto os spines estiverem em draft, valem também as decisões canônicas da .memlog.md:
+      Relatório contemporâneo + Mata & Cobre; navegação horizontal Início / Projetos /
+      Documentos / Publicações; Adicionar e Rodrigo como ações separadas; página inicial como
+      área de trabalho. Os spines prevalecem sobre este mock em caso de conflito.
+    */
+
+    * { box-sizing: border-box; }
+    html { min-width: 320px; background: #e7ebe7; color: #183329; font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { margin: 0; overflow-x: hidden; }
+    button, input { font: inherit; }
+    button { cursor: default; }
+    .presentation { width: min(1440px, 100%); margin: 0 auto; padding: 34px 28px 64px; }
+    .presentation-head { width: min(1320px, 100%); margin: 0 auto 22px; display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; gap: 24px; align-items: end; }
+    .sheet-number { color: #cb5c2b; font-size: 52px; font-weight: 900; line-height: .8; letter-spacing: -.07em; }
+    .presentation-head h1 { margin: 0 0 6px; color: #183329; font-size: clamp(28px, 3vw, 38px); line-height: 1; letter-spacing: -.045em; }
+    .presentation-head p { max-width: 790px; margin: 0; color: #66726c; }
+    .notice { max-width: 290px; padding: 10px 12px; border-left: 3px solid #cb5c2b; background: rgba(255,255,255,.62); color: #66726c; font-size: 12px; }
+    .notice strong { color: #183329; }
+    .frame-label { width: min(1320px, 100%); margin: 28px auto 10px; display: flex; align-items: center; gap: 12px; color: #52635b; font-size: 11px; font-weight: 850; letter-spacing: .12em; text-transform: uppercase; }
+    .frame-label::after { content: ""; height: 1px; flex: 1; background: #c9d0cb; }
+
+    .browser { width: min(1320px, 100%); margin: 0 auto; overflow: hidden; border: 1px solid var(--border-strong); background: var(--surface); box-shadow: 0 24px 70px var(--shadow); }
+    .browser-bar { height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 14px; background: var(--browser-bar); border-bottom: 1px solid var(--border); }
+    .browser-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--browser-dot); }
+    .browser-address { width: 34%; height: 18px; margin: 0 auto; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-raised); }
+    .app { min-height: 790px; background: var(--bg); color: var(--text); }
+
+    .light {
+      --bg:#F5F5EF; --surface:#FFFFFF; --surface-raised:#FBFAF5; --text:#183329; --muted:#66726C;
+      --border:#D8DDD7; --border-strong:#B1BDB6; --primary:#174D3B; --on-primary:#FFFFFF;
+      --primary-soft:#E5F0EA; --primary-border:#BED4C8; --copper:#CB5C2B; --copper-soft:#FFF0DE; --focus:#CB5C2B;
+      --success:#267A55; --success-soft:#E5F3EB; --warning:#AD5C19; --warning-soft:#FFF0DE;
+      --draft:#836E1E; --draft-soft:#F4EDCE; --browser-bar:#E7E9E4; --browser-dot:#AAB4AD;
+      --shadow:rgba(24,51,41,.14); --resume-mid:#205E49; --resume-copy:#D2E4DA; --control-border:#7C8A82;
+    }
+    .dark {
+      --bg:#101713; --surface:#18231D; --surface-raised:#1D2B24; --text:#F1F5F1; --muted:#AEBBAF;
+      --border:#33463A; --border-strong:#5A7462; --primary:#7AC4A2; --on-primary:#0E291C;
+      --primary-soft:#1B382B; --primary-border:#315C46; --copper:#F08A59; --copper-soft:#3B2B18; --focus:#F08A59;
+      --success:#72D3A0; --success-soft:#183B2A; --warning:#F3B36A; --warning-soft:#3B2B18;
+      --draft:#E5CD6D; --draft-soft:#3A351B; --browser-bar:#0B110E; --browser-dot:#486052;
+      --shadow:rgba(0,0,0,.38); --resume-mid:#285B47; --resume-copy:#D2E4DA; --control-border:#5A7462;
+    }
+
+    .browser :where(a, button, input):focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+    .app-header { min-height: 72px; display: flex; align-items: stretch; padding: 0 32px; background: var(--surface); border-bottom: 1px solid var(--border); }
+    .brand { display: flex; align-items: center; gap: 10px; min-width: 130px; color: var(--text); font-size: 19px; font-weight: 900; letter-spacing: .035em; text-decoration: none; }
+    .brand-symbol { width: 35px; height: 35px; object-fit: contain; display: block; }
+    .primary-nav { display: flex; align-items: stretch; gap: 2px; margin-left: 35px; }
+    .nav-item { position: relative; display: flex; align-items: center; padding: 0 17px; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; white-space: nowrap; }
+    .nav-item.active { color: var(--text); }
+    .nav-item.active::after { content: ""; position: absolute; right: 17px; bottom: -1px; left: 17px; height: 3px; background: var(--copper); }
+    .header-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+    .global-add { min-height: 44px; padding: 0 15px; border: 1px solid #174d3b; background: #174d3b; color: #fff; font-size: 12px; font-weight: 850; }
+    .account { min-height: 44px; padding: 0 12px; border: 1px solid var(--control-border); background: var(--surface); color: var(--text); font-size: 12px; font-weight: 800; }
+    .menu-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+    .chevron { color: var(--copper); font-size: 12px; line-height: 1; }
+    .global-add .chevron { color: #fff; }
+    .menu-popup[hidden] { display: none; }
+
+    .workspace { width: min(1190px, calc(100% - 64px)); margin: 0 auto; padding: 32px 0 42px; }
+    .welcome { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 20px; align-items: end; margin-bottom: 20px; }
+    .welcome h2 { margin: 0; color: var(--text); font-size: clamp(27px, 3vw, 36px); line-height: 1; letter-spacing: -.045em; }
+    .welcome p { margin: 7px 0 0; color: var(--muted); }
+    .today { color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .13em; text-transform: uppercase; }
+
+    .continue-card { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(170px, .46fr) minmax(190px, .42fr); min-height: 164px; overflow: hidden; color: #fff; background: #174d3b; }
+    .continue-main { min-width: 0; padding: 24px 27px; }
+    .overline { margin: 0; color: #9ed5bb; font-size: 10px; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+    .continue-main h3 { margin: 9px 0 6px; font-size: 26px; line-height: 1.12; letter-spacing: -.03em; }
+    .continue-main p { margin: 0; color: var(--resume-copy); font-size: 13px; }
+    .continue-status { display: flex; flex-direction: column; justify-content: center; padding: 23px; background: var(--resume-mid); }
+    .continue-status strong { font-size: 31px; line-height: 1; }
+    .continue-status span { margin-top: 7px; color: #d1e4da; font-size: 12px; }
+    .continue-action { display: flex; flex-direction: column; justify-content: space-between; padding: 22px; border: 0; background: #174d3b; color: #fff; text-align: left; }
+    .continue-action strong { font-size: 14px; }
+    .continue-action span { align-self: flex-end; font-size: 32px; line-height: 1; }
+
+    .search { margin: 15px 0; display: grid; gap: 6px; }
+    .search label { color: var(--text); font-size: 11px; font-weight: 800; }
+    .search-control { position: relative; }
+    .search input { width: 100%; height: 56px; padding: 0 20px 0 51px; border: 1px solid var(--control-border); border-radius: 0; background: var(--surface); color: var(--text); }
+    .search input::placeholder { color: var(--muted); opacity: 1; }
+    .search-icon { position: absolute; top: 18px; left: 20px; width: 18px; height: 18px; border: 2px solid var(--copper); border-radius: 50%; }
+    .search-icon::after { content: ""; position: absolute; right: -6px; bottom: -3px; width: 8px; height: 2px; background: var(--copper); transform: rotate(45deg); }
+
+    .quick-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--border); background: var(--border); }
+    .quick-action { min-width: 0; min-height: 86px; padding: 14px 15px; border: 0; background: var(--surface); color: var(--text); text-align: left; }
+    .quick-action .quick-icon { display: block; color: var(--copper); font-size: 20px; font-weight: 900; line-height: 1; }
+    .quick-action strong { display: block; margin-top: 12px; font-size: 12px; line-height: 1.25; }
+
+    .lower { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(310px, .8fr); gap: 15px; margin-top: 20px; }
+    .panel { min-width: 0; overflow: hidden; border: 1px solid var(--border); background: var(--surface); }
+    .panel-head { min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 19px; border-bottom: 1px solid var(--border); }
+    .panel-head h3 { margin: 0; font-size: 16px; }
+    .panel-link { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 4px; border: 0; background: transparent; color: var(--primary); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+    .recent-row { display: grid; grid-template-columns: 28px minmax(0, 1.25fr) minmax(130px, .72fr) minmax(88px, .42fr); gap: 12px; align-items: center; min-height: 62px; padding: 10px 18px; border-bottom: 1px solid var(--border); }
+    .recent-row:last-child { border-bottom: 0; }
+    .row-index { color: var(--primary); font-size: 10px; font-weight: 900; }
+    .recent-row strong { min-width: 0; font-size: 13px; }
+    .recent-row span { color: var(--muted); font-size: 11px; }
+    .recent-row .attention { color: var(--warning); font-weight: 800; }
+    .pending-grid { display: grid; grid-template-columns: 1fr 1fr; }
+    .pending-item { min-height: 110px; padding: 17px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .pending-item:nth-child(2n) { border-right: 0; }
+    .pending-item:nth-last-child(-n+2) { border-bottom: 0; }
+    .pending-item.emphasis { background: var(--copper-soft); }
+    .pending-item strong { display: block; color: var(--primary); font-size: 31px; line-height: 1; letter-spacing: -.05em; }
+    .pending-item.emphasis strong { color: var(--copper); }
+    .pending-item span { display: block; margin-top: 8px; color: var(--muted); font-size: 11px; }
+    .mode-note { width: min(1320px, 100%); margin: 10px auto 0; color: #64716b; font-size: 11px; }
+
+    @media (max-width: 980px) {
+      .presentation { padding: 24px 16px 48px; }
+      .presentation-head { grid-template-columns: 74px minmax(0, 1fr); }
+      .notice { grid-column: 2; max-width: none; }
+      .app-header { flex-wrap: wrap; min-height: 72px; padding: 10px 20px 0; }
+      .brand { height: 51px; }
+      .primary-nav { order: 3; width: 100%; min-height: 48px; margin: 0; border-top: 1px solid var(--border); }
+      .nav-item { flex: 1; justify-content: center; padding: 0 8px; }
+      .nav-item.active::after { right: 8px; left: 8px; }
+      .workspace { width: min(100% - 36px, 1190px); }
+      .continue-card { grid-template-columns: minmax(0, 1fr) 170px; }
+      .continue-status { display: none; }
+      .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .lower { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .presentation-head { grid-template-columns: 1fr; gap: 10px; }
+      .notice { grid-column: 1; }
+      .sheet-number { font-size: 34px; }
+      .browser-address { display: none; }
+      .app-header { align-items: center; padding: 8px 12px 0; }
+      .brand { min-width: 105px; }
+      .brand-symbol { width: 30px; height: 30px; }
+      .header-actions { gap: 6px; }
+      .global-add, .account { padding: 0 9px; }
+      .primary-nav { display: grid; grid-template-columns: repeat(4, 1fr); }
+      .nav-item { min-width: 0; font-size: 11px; }
+      .workspace { width: min(100% - 24px, 1190px); padding-top: 24px; }
+      .welcome { grid-template-columns: 1fr; }
+      .today { display: none; }
+      .continue-card { grid-template-columns: 1fr; }
+      .continue-action { min-height: 82px; }
+      .quick-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .recent-row { grid-template-columns: 22px minmax(0,1fr) 94px; }
+      .recent-row > :last-child { display: none; }
+      .pending-grid { grid-template-columns: 1fr; }
+      .pending-item, .pending-item:nth-child(2n), .pending-item:nth-last-child(-n+2) { min-height: 82px; border-right: 0; border-bottom: 1px solid var(--border); }
+      .pending-item:last-child { border-bottom: 0; }
+    }
+    @media (forced-colors: active) {
+      .browser :where(a, button, input):focus-visible { outline: 3px solid Highlight; }
+      .nav-item.active::after, .search-icon, .search-icon::after { forced-color-adjust: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="presentation">
+    <header class="presentation-head">
+      <div class="sheet-number">01</div>
+      <div>
+        <h1>TRIA · início e navegação</h1>
+        <p>Hipótese visual para avaliar o símbolo provisório e a navegação principal no contexto real da área de trabalho.</p>
+      </div>
+      <aside class="notice"><strong>Referência, não contrato.</strong> DESIGN.md e EXPERIENCE.md prevalecem sobre este mock.</aside>
+    </header>
+
+    <div class="frame-label">Frame A · modo claro</div>
+    <section class="browser light" aria-label="Página inicial do TRIA em modo claro">
+      <div class="browser-bar" aria-hidden="true"><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-address"></span></div>
+      <div class="app">
+        <header class="app-header">
+          <a class="brand" href="#" aria-label="TRIA, início"><img class="brand-symbol" src="tria-icon-refined-v1.png" alt=""><span>TRIA</span></a>
+          <nav class="primary-nav" aria-label="Navegação principal">
+            <button class="nav-item active" type="button" aria-current="page">Início</button>
+            <button class="nav-item" type="button">Projetos</button>
+            <button class="nav-item" type="button">Documentos</button>
+            <button class="nav-item" type="button">Publicações</button>
+          </nav>
+          <div class="header-actions">
+            <button class="global-add menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="add-menu-light"><span>Adicionar</span><span class="chevron" aria-hidden="true">▾</span></button>
+            <div id="add-menu-light" class="menu-popup" role="menu" aria-label="Adicionar" hidden><button type="button" role="menuitem">Adicionar projeto</button><button type="button" role="menuitem">Adicionar informação, valor ou nota</button><button type="button" role="menuitem">Adicionar documento</button><button type="button" role="menuitem">Importar planilha</button></div>
+            <button class="account menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu-light"><span>Rodrigo</span><span class="chevron" aria-hidden="true">▾</span></button>
+            <div id="account-menu-light" class="menu-popup" role="menu" aria-label="Conta de Rodrigo" hidden><button type="button" role="menuitem">Gerenciar acessos</button><button type="button" role="menuitem">Aparência: Sistema</button><button type="button" role="menuitem">Alterar senha</button><button type="button" role="menuitem">Sair</button></div>
+          </div>
+        </header>
+
+        <div class="workspace">
+          <div class="welcome"><div><h2>Seu trabalho, em continuidade.</h2><p>Retome um projeto ou registre o que encontrou.</p></div><span class="today">28 AGO 2026 · 14:38</span></div>
+          <article class="continue-card">
+            <div class="continue-main"><p class="overline">Continuar de onde parou</p><h3>Desenvolvimento APP</h3><p>Rascunho da narrativa · salvo hoje às 14:32</p></div>
+            <div class="continue-status"><strong>3</strong><span>pendências visíveis<br>nenhuma impede salvar</span></div>
+            <button class="continue-action" type="button"><strong>Continuar rascunho</strong><span aria-hidden="true">→</span></button>
+          </article>
+
+          <form class="search" role="search"><label for="search-light">Pesquisa principal</label><div class="search-control"><span class="search-icon" aria-hidden="true"></span><input id="search-light" type="search" placeholder="Busque um projeto, nota ou documento"></div></form>
+
+          <section class="quick-actions" aria-label="Ações rápidas">
+            <button class="quick-action" type="button"><span class="quick-icon">＋</span><strong>Adicionar informação</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">R$</span><strong>Adicionar valor ou nota</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">↥</span><strong>Adicionar documento</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">▦</span><strong>Importar planilha</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">□</span><strong>Criar projeto</strong></button>
+          </section>
+
+          <div class="lower">
+            <section class="panel" aria-labelledby="recentes-light"><header class="panel-head"><h3 id="recentes-light">Trabalhos recentes</h3><button class="panel-link" type="button">Ver todos <span aria-hidden="true">→</span></button></header>
+              <div class="recent-row"><span class="row-index">01</span><strong>Plano de Cargos e Salários</strong><span>Pronto para publicação</span><span class="attention">2 alertas</span></div>
+              <div class="recent-row"><span class="row-index">02</span><strong>Pesquisa de Clima — Fazenda Veneza</strong><span>Parcial</span><span class="attention">1 pendência</span></div>
+              <div class="recent-row"><span class="row-index">03</span><strong>Conecta Uniggel</strong><span>Rascunho</span><span>ontem</span></div>
+            </section>
+            <section class="panel" aria-labelledby="pendencias-light"><header class="panel-head"><h3 id="pendencias-light">Pendências</h3><button class="panel-link" type="button">Revisar <span aria-hidden="true">→</span></button></header><div class="pending-grid">
+              <div class="pending-item emphasis"><strong>4</strong><span>rascunhos</span></div><div class="pending-item"><strong>3</strong><span>projetos que podem ser publicados</span></div><div class="pending-item"><strong>2</strong><span>documentos sem classificação</span></div><div class="pending-item"><strong>1</strong><span>informação devolvida</span></div>
+            </div></section>
+          </div>
+        </div>
+      </div>
+    </section>
+    <p class="mode-note">O símbolo no cabeçalho é provisório e está sendo avaliado em contexto.</p>
+
+    <div class="frame-label">Frame B · modo escuro</div>
+    <section class="browser dark" aria-label="Página inicial do TRIA em modo escuro">
+      <div class="browser-bar" aria-hidden="true"><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-dot"></span><span class="browser-address"></span></div>
+      <div class="app">
+        <header class="app-header">
+          <a class="brand" href="#" aria-label="TRIA, início"><img class="brand-symbol" src="tria-icon-refined-v1.png" alt=""><span>TRIA</span></a>
+          <nav class="primary-nav" aria-label="Navegação principal">
+            <button class="nav-item active" type="button" aria-current="page">Início</button>
+            <button class="nav-item" type="button">Projetos</button>
+            <button class="nav-item" type="button">Documentos</button>
+            <button class="nav-item" type="button">Publicações</button>
+          </nav>
+          <div class="header-actions"><button class="global-add menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="add-menu-dark"><span>Adicionar</span><span class="chevron" aria-hidden="true">▾</span></button><div id="add-menu-dark" class="menu-popup" role="menu" aria-label="Adicionar" hidden><button type="button" role="menuitem">Adicionar projeto</button><button type="button" role="menuitem">Adicionar informação, valor ou nota</button><button type="button" role="menuitem">Adicionar documento</button><button type="button" role="menuitem">Importar planilha</button></div><button class="account menu-trigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu-dark"><span>Rodrigo</span><span class="chevron" aria-hidden="true">▾</span></button><div id="account-menu-dark" class="menu-popup" role="menu" aria-label="Conta de Rodrigo" hidden><button type="button" role="menuitem">Gerenciar acessos</button><button type="button" role="menuitem">Aparência: Sistema</button><button type="button" role="menuitem">Alterar senha</button><button type="button" role="menuitem">Sair</button></div></div>
+        </header>
+
+        <div class="workspace">
+          <div class="welcome"><div><h2>Seu trabalho, em continuidade.</h2><p>Retome um projeto ou registre o que encontrou.</p></div><span class="today">28 AGO 2026 · 14:38</span></div>
+          <article class="continue-card">
+            <div class="continue-main"><p class="overline">Continuar de onde parou</p><h3>Desenvolvimento APP</h3><p>Rascunho da narrativa · salvo hoje às 14:32</p></div>
+            <div class="continue-status"><strong>3</strong><span>pendências visíveis<br>nenhuma impede salvar</span></div>
+            <button class="continue-action" type="button"><strong>Continuar rascunho</strong><span aria-hidden="true">→</span></button>
+          </article>
+
+          <form class="search" role="search"><label for="search-dark">Pesquisa principal</label><div class="search-control"><span class="search-icon" aria-hidden="true"></span><input id="search-dark" type="search" placeholder="Busque um projeto, nota ou documento"></div></form>
+
+          <section class="quick-actions" aria-label="Ações rápidas">
+            <button class="quick-action" type="button"><span class="quick-icon">＋</span><strong>Adicionar informação</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">R$</span><strong>Adicionar valor ou nota</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">↥</span><strong>Adicionar documento</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">▦</span><strong>Importar planilha</strong></button>
+            <button class="quick-action" type="button"><span class="quick-icon">□</span><strong>Criar projeto</strong></button>
+          </section>
+
+          <div class="lower">
+            <section class="panel" aria-labelledby="recentes-dark"><header class="panel-head"><h3 id="recentes-dark">Trabalhos recentes</h3><button class="panel-link" type="button">Ver todos <span aria-hidden="true">→</span></button></header>
+              <div class="recent-row"><span class="row-index">01</span><strong>Plano de Cargos e Salários</strong><span>Pronto para publicação</span><span class="attention">2 alertas</span></div>
+              <div class="recent-row"><span class="row-index">02</span><strong>Pesquisa de Clima — Fazenda Veneza</strong><span>Parcial</span><span class="attention">1 pendência</span></div>
+              <div class="recent-row"><span class="row-index">03</span><strong>Conecta Uniggel</strong><span>Rascunho</span><span>ontem</span></div>
+            </section>
+            <section class="panel" aria-labelledby="pendencias-dark"><header class="panel-head"><h3 id="pendencias-dark">Pendências</h3><button class="panel-link" type="button">Revisar <span aria-hidden="true">→</span></button></header><div class="pending-grid">
+              <div class="pending-item emphasis"><strong>4</strong><span>rascunhos</span></div><div class="pending-item"><strong>3</strong><span>projetos que podem ser publicados</span></div><div class="pending-item"><strong>2</strong><span>documentos sem classificação</span></div><div class="pending-item"><strong>1</strong><span>informação devolvida</span></div>
+            </div></section>
+          </div>
+        </div>
+      </div>
+    </section>
+    <p class="mode-note">Mesma hierarquia, conteúdo e navegação; apenas os tokens Mata &amp; Cobre mudam entre os modos.</p>
+  </main>
+</body>
+</html>
