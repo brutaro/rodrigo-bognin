@@ -1,0 +1,11 @@
+.git
+.next
+node_modules
+coverage
+var/*
+.env*
+!.env.example
+.secrets
+*.log
+npm-debug.log*
+references

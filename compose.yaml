@@ -1,0 +1,182 @@
+name: tria-plano-b
+
+services:
+  db:
+    image: postgres:16-bookworm@sha256:bb3e1a57e5407e0a5280b4211980a5e537f4abd234a87014ac979849a78dd825
+    environment:
+      POSTGRES_DB: tria
+      POSTGRES_USER: tria_admin
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_admin_password
+    secrets:
+      - db_admin_password
+      - db_app_password
+      - db_migrator_password
+      - db_importer_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "PGPASSWORD=$$(cat /run/secrets/db_admin_password) psql -h db -U tria_admin -d tria -Atc 'select 1' | grep -qx 1"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  roles:
+    image: postgres:16-bookworm@sha256:bb3e1a57e5407e0a5280b4211980a5e537f4abd234a87014ac979849a78dd825
+    environment:
+      PGHOST: db
+      PGDATABASE: tria
+      PGUSER: tria_admin
+    secrets:
+      - db_admin_password
+      - db_app_password
+      - db_migrator_password
+      - db_importer_password
+    volumes:
+      - ./docker/postgres/roles/ensure-roles.sh:/usr/local/bin/ensure-roles:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["/usr/local/bin/ensure-roles"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  migrate:
+    image: tria-plano-b-tools:local
+    build:
+      context: .
+      target: tools
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: tria
+      PGUSER: tria_migrator
+      PGPASSWORD_FILE: /run/secrets/db_migrator_password
+      npm_config_cache: /tmp/npm
+    secrets:
+      - db_migrator_password
+    depends_on:
+      roles:
+        condition: service_completed_successfully
+    command: ["npm", "run", "db:migrate"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/.next:uid=1000,gid=1000,mode=0770
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  importer:
+    image: tria-plano-b-tools:local
+    build:
+      context: .
+      target: tools
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: tria
+      PGUSER: tria_importer
+      PGPASSWORD_FILE: /run/secrets/db_importer_password
+      npm_config_cache: /tmp/npm
+    secrets:
+      - db_importer_password
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - "${TRIA_SOURCE_ACTIVITIES:-/dev/null}:/imports/bm_activities_normalized.complete.csv:ro"
+      - "${TRIA_SOURCE_NOTES:-/dev/null}:/imports/NFS_PROCESSADA_FONTE_VERDADE.csv:ro"
+      - "${TRIA_SOURCE_RELATIONS:-/dev/null}:/imports/CLASSIFICACAO_RELACAO_NFS_PROJETOS.csv:ro"
+      - "${TRIA_SOURCE_EVIDENCE:-/dev/null}:/imports/project_deliverable_crosswalk.csv:ro"
+    command: ["npm", "run", "db:import"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  integration:
+    profiles: ["validation"]
+    image: tria-plano-b-tools:local
+    build:
+      context: .
+      target: tools
+    command: ["npm", "run", "test:integration"]
+    environment:
+      PGHOST: db
+      PGDATABASE: tria
+      DB_APP_PASSWORD_FILE: /run/secrets/db_app_password
+      DB_ADMIN_PASSWORD_FILE: /run/secrets/db_admin_password
+      APP_BASE_URL: http://app:3000
+    secrets:
+      - db_app_password
+      - db_admin_password
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+
+  app:
+    build:
+      context: .
+      target: runner
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: tria
+      PGUSER: tria_app
+      PGPASSWORD_FILE: /run/secrets/db_app_password
+      PGPOOL_MAX: "5"
+      TRIA_DEMO_WRITES: enabled
+    secrets:
+      - db_app_password
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${TRIA_PORT:-3100}:3000"
+    volumes:
+      - next_cache:/app/.next/cache
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+    restart: unless-stopped
+
+secrets:
+  db_admin_password:
+    file: ./.secrets/db_admin_password
+  db_app_password:
+    file: ./.secrets/db_app_password
+  db_migrator_password:
+    file: ./.secrets/db_migrator_password
+  db_importer_password:
+    file: ./.secrets/db_importer_password
+
+volumes:
+  postgres_data:
+  next_cache:

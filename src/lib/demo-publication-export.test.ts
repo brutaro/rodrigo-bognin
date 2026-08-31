@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { getDemoProject } from "./demo-data";
 import {
   buildPublicationCsv,
   buildPublicationHtml,
   safeCsvCell,
-  toPublicPublicationV1,
+  sanitizePublicText,
+  toPublicPublication,
 } from "./demo-publication-export";
 import { buildPublicationSnapshot, type DemoProjectDraft } from "./demo-workspace";
 
@@ -58,7 +60,7 @@ describe("proteção CSV", () => {
 describe("DTO público e exportações", () => {
   const localPathCanary = `/${"Users"}/segredo/documento.pdf`;
   const publication = publicationWith(`<script>alert("x")</script> ${localPathCanary}`);
-  const view = toPublicPublicationV1(publication);
+  const view = toPublicPublication(publication);
   const html = buildPublicationHtml(publication);
   const csv = buildPublicationCsv(publication);
 
@@ -92,5 +94,36 @@ describe("DTO público e exportações", () => {
   it("é determinístico para o mesmo snapshot", () => {
     expect(buildPublicationHtml(publication)).toBe(html);
     expect(buildPublicationCsv(publication)).toBe(csv);
+  });
+});
+
+
+describe("renderizadores versionados", () => {
+  it("preserva os bytes do renderizador v1", () => {
+    const snapshot = publicationWith("Golden renderer fixture with enough stable content.");
+    snapshot.schemaVersion = "tria-publication-v1";
+    snapshot.rendererVersion = "tria-export-v1";
+    expect(createHash("sha256").update(buildPublicationHtml(snapshot)).digest("hex")).toBe("897a09064d854b48074f43a2aae638b9e00d88791ae6d3cd1bb77660a9f5451f");
+    expect(createHash("sha256").update(buildPublicationCsv(snapshot)).digest("hex")).toBe("bd8027ba835abbdfb13724aa7f6337105b3d1e4524e984df27d0b5e6526ce222");
+  });
+
+  it("preserva os bytes do renderizador v2 enquanto a versão não muda", () => {
+    const snapshot = structuredClone(publicationWith(`<script>alert("x")</script> /Users/segredo/documento.pdf`));
+    snapshot.rendererVersion = "tria-export-v2";
+    expect(createHash("sha256").update(buildPublicationHtml(snapshot)).digest("hex")).toBe("3363ea08d4020b495b3834ab139def4249074d68d33b962c96e61cb6b84d0615");
+    expect(createHash("sha256").update(buildPublicationCsv(snapshot)).digest("hex")).toBe("eaa2786cdfde1d5f45b9bb160c6a5598ced3c4f4420667d34c31f7cb87ab1a6a");
+  });
+
+  it.each([
+    "/Users/alice/Secret Folder/file.pdf",
+    "/home/rodrigo/private report.pdf",
+    "C:\\Users\\alice\\Secret Folder\\file.pdf",
+    "file:///tmp/private file.txt",
+    "/var/folders/ab/private cache.bin",
+    "/opt/work/private config.yaml",
+    "D:\\work\\Secret Folder\\file.pdf",
+  ])("omite caminhos locais completos: %s", (value) => {
+    const sanitized = sanitizePublicText(`Antes ${value} depois`);
+    expect(sanitized).toBe("Antes [caminho local omitido] depois");
   });
 });

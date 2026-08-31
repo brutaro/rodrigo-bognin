@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { Project } from "@/lib/demo-data";
+import type { ProjectSummary } from "@/lib/project-repository";
 import { StatusBadge } from "@/components/status-badge";
 
-export function ProjectList({ projects }: { projects: Project[] }) {
+export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
   const [query, setQuery] = useState("");
   const normalized = query.trim().toLocaleLowerCase("pt-BR");
   const filtered = useMemo(
@@ -51,8 +51,8 @@ export function ProjectList({ projects }: { projects: Project[] }) {
                   <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-slate-600">{project.narrative}</p>
                 </div>
                 <div className="flex items-center gap-5 text-sm text-slate-600">
-                  <span><strong className="block text-base text-[var(--ink)]">{project.activities.length}</strong> atividades</span>
-                  <span><strong className="block text-base text-[var(--ink)]">{project.evidence.length}</strong> evidências</span>
+                  <span><strong className="block text-base text-[var(--ink)]">{project.activityCount}</strong> atividades</span>
+                  <span><strong className="block text-base text-[var(--ink)]">{project.evidenceCount}</strong> evidências</span>
                   <span aria-hidden className="text-xl text-slate-400 transition group-hover:translate-x-1 group-hover:text-[var(--brand)]">→</span>
                 </div>
               </Link>

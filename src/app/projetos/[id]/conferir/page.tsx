@@ -1,25 +1,28 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { ActivityPagination, activityPageSize, normalizeActivityPage } from "@/components/activity-pagination";
 import { Notice } from "@/components/notice";
 import { SubmitButton } from "@/components/submit-button";
-import { getDemoProject } from "@/lib/demo-data";
+import { getProjectDetails } from "@/lib/project-repository";
 import {
-  buildDemoCompositionHash,
+  buildWorkspaceCompositionHash,
   formatBrlFromCents,
-  listDemoProjectPublications,
-  readDemoProjectDraft,
-} from "@/lib/demo-workspace";
+  listProjectPublications,
+  readProjectDraft,
+} from "@/lib/workspace";
 import { publishProjectAction } from "./actions";
+
+export const dynamic = "force-dynamic";
 
 export default async function ReviewProjectPage({ params, searchParams }: PageProps<"/projetos/[id]/conferir">) {
   const { id } = await params;
-  const project = getDemoProject(id);
+  const project = await getProjectDetails(id);
   if (!project) notFound();
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
-  const draft = await readDemoProjectDraft(project.id);
-  const publications = await listDemoProjectPublications(project.id);
+  const draft = await readProjectDraft(project.id);
+  const publications = await listProjectPublications(project.id);
   const pendingEvidence = project.evidence.filter((item) => item.availability === "Pendente");
   const undocumentedPayments = draft.manualFinancialEntries.filter(
     (entry) => entry.kind === "Pagamento" && entry.documentState === "Sem arquivo associado",
@@ -28,8 +31,11 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
     (entry) => entry.relation === "Fraca" || entry.relation === "Sem relação confirmada",
   );
   const canPublish = draft.narrative.trim().length >= 20;
-  const compositionHash = buildDemoCompositionHash(project, draft);
-  const publish = publishProjectAction.bind(null, project.id, compositionHash);
+  const compositionHash = buildWorkspaceCompositionHash(project, draft);
+  const activityPage = normalizeActivityPage(typeof query.activityPage === "string" ? query.activityPage : undefined, project.activities.length);
+  const activityStart = (activityPage - 1) * activityPageSize;
+  const visibleActivities = project.activities.slice(activityStart, activityStart + activityPageSize);
+  const publish = publishProjectAction.bind(null, project.id, compositionHash, draft.revision ?? "0");
 
   return (
     <AppShell>
@@ -59,14 +65,15 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
             </section>
 
             <section aria-labelledby="preview-activities" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
-              <div className="border-b border-[var(--border)] p-5"><h2 id="preview-activities" className="text-xl font-bold text-[var(--ink)]">Atividades e medições</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Medição não comprova faturamento ou pagamento.</p></div>
-              <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Atividade</th><th className="px-5 py-3">BM</th><th className="px-5 py-3">Horas</th><th className="px-5 py-3 text-right">Medido</th></tr></thead><tbody className="divide-y divide-[var(--border)]">{project.activities.map((item) => <tr key={item.id}><td className="px-5 py-4"><strong className="block">{item.description}</strong><span className="text-xs text-slate-500">{item.id}</span></td><td className="px-5 py-4">{item.bm}</td><td className="px-5 py-4">{item.hours}</td><td className="px-5 py-4 text-right font-semibold">{item.measuredValue}</td></tr>)}</tbody></table></div>
+              <div className="border-b border-[var(--border)] p-5"><h2 id="preview-activities" className="text-xl font-bold text-[var(--ink)]">Atividades e medições</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Medição não comprova faturamento ou pagamento. Mostrando {visibleActivities.length ? activityStart + 1 : 0}–{activityStart + visibleActivities.length} de {project.activities.length} atividades.</p></div>
+              <div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Atividade</th><th className="px-5 py-3">BM</th><th className="px-5 py-3">Horas</th><th className="px-5 py-3 text-right">Medido</th></tr></thead><tbody className="divide-y divide-[var(--border)]">{visibleActivities.map((item) => <tr key={item.id}><td className="px-5 py-4"><strong className="block">{item.description}</strong><span className="text-xs text-slate-500">{item.id}</span></td><td className="px-5 py-4">{item.bm}</td><td className="px-5 py-4">{item.hours}</td><td className="px-5 py-4 text-right font-semibold">{item.measuredValue}</td></tr>)}</tbody></table></div>
+              <ActivityPagination basePath={`/projetos/${encodeURIComponent(project.id)}/conferir`} page={activityPage} total={project.activities.length} anchor="preview-activities" />
             </section>
 
             <section aria-labelledby="preview-financial" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
               <div className="border-b border-[var(--border)] p-5"><h2 id="preview-financial" className="text-xl font-bold text-[var(--ink)]">Referências financeiras</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">As naturezas não são somadas automaticamente.</p></div>
               <div className="divide-y divide-[var(--border)]">
-                {project.financialReferences.map((item) => <article key={item.id} className="p-5"><div className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase text-[var(--brand)]">Referência importada · {item.kind}</p><h3 className="mt-1 font-semibold">{item.label}</h3><p className="mt-2 text-xs text-slate-500">{item.id} · Relação: {item.relation} · Pagamento: {item.payment}</p></div><strong>{item.amount}</strong></div></article>)}
+                {project.financialReferences.map((item) => <article key={item.id} className="p-5"><div className="flex flex-col justify-between gap-4 sm:flex-row"><div><p className="text-xs font-bold uppercase text-[var(--brand)]">Referência importada · {item.kind}</p><h3 className="mt-1 font-semibold">{item.label}</h3><dl className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2"><div><dt>Base do vínculo</dt><dd className="font-semibold">{item.relationBasis ?? "Não informada"}</dd></div><div><dt>Relação</dt><dd className="font-semibold">{item.relation}</dd></div><div><dt>Valor relacionado</dt><dd className="font-semibold">{item.relatedAmount ?? "Não informado"}</dd></div><div><dt>Valor integral elegível</dt><dd className="font-semibold">{item.fullValueEligible === true ? "Sim" : item.fullValueEligible === false ? "Não" : "Não avaliado"}</dd></div><div><dt>Pagamento</dt><dd className="font-semibold">{item.payment}</dd></div></dl></div><div className="sm:text-right"><span className="text-xs text-slate-500">Valor bruto da nota</span><strong className="block">{item.amount}</strong></div></div></article>)}
                 {draft.manualFinancialEntries.map((item) => <article key={item.id} className="border-l-4 border-l-blue-400 p-5"><div className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase text-blue-800">Cadastro manual · {item.kind}</p><h3 className="mt-1 font-semibold">{item.description}</h3><p className="mt-2 text-xs text-slate-500">{item.origin} · {item.documentState}</p></div><strong>{formatBrlFromCents(item.amountCents)}</strong></div></article>)}
                 {!project.financialReferences.length && !draft.manualFinancialEntries.length ? <p className="p-5 text-sm text-slate-500">Nenhuma referência financeira.</p> : null}
               </div>

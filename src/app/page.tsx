@@ -2,10 +2,13 @@ import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { ProjectList } from "@/components/project-list";
 import { StatusBadge } from "@/components/status-badge";
-import { demoProjects } from "@/lib/demo-data";
+import { listProjectSummaries } from "@/lib/project-repository";
 
-export default function Home() {
-  const currentProject = demoProjects[0];
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const projects = await listProjectSummaries();
+  const currentProject = projects[0];
 
   return (
     <AppShell>
@@ -23,23 +26,25 @@ export default function Home() {
           </button>
         </section>
 
-        <section aria-labelledby="continue-title" className="mb-7 rounded-2xl border border-blue-200 bg-blue-50 p-5 sm:p-6">
-          <p id="continue-title" className="text-xs font-bold uppercase tracking-[0.16em] text-blue-800">Continuar de onde parei</p>
-          <div className="mt-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-lg font-bold text-[var(--ink)]">{currentProject.name}</h2>
-                <StatusBadge status={currentProject.status} />
+        {currentProject ? (
+          <section aria-labelledby="continue-title" className="mb-7 rounded-2xl border border-blue-200 bg-blue-50 p-5 sm:p-6">
+            <p id="continue-title" className="text-xs font-bold uppercase tracking-[0.16em] text-blue-800">Continuar de onde parei</p>
+            <div className="mt-3 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-lg font-bold text-[var(--ink)]">{currentProject.name}</h2>
+                  <StatusBadge status={currentProject.status} />
+                </div>
+                <p className="mt-2 text-sm text-slate-600">Próxima ação: conferir narrativa, valores e arquivos.</p>
               </div>
-              <p className="mt-2 text-sm text-slate-600">Próxima ação: conferir narrativa, valores e arquivos.</p>
+              <Link href={`/projetos/${currentProject.id}`} className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-white transition hover:bg-blue-900">
+                Abrir projeto
+              </Link>
             </div>
-            <Link href={`/projetos/${currentProject.id}`} className="inline-flex h-11 shrink-0 items-center justify-center rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-white transition hover:bg-blue-900">
-              Abrir projeto
-            </Link>
-          </div>
-        </section>
+          </section>
+        ) : null}
 
-        <ProjectList projects={demoProjects} />
+        <ProjectList projects={projects} />
 
         <p className="mt-6 text-sm text-[var(--ink-muted)]">
           Publicações anteriores aparecerão aqui quando a primeira versão for gerada.

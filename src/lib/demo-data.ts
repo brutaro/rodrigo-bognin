@@ -20,6 +20,9 @@ export type Project = {
     kind: "NFS-e" | "Informação de Rodrigo" | "Referência financeira";
     label: string;
     amount: string;
+    relatedAmount?: string | null;
+    fullValueEligible?: boolean | null;
+    relationBasis?: "Declarado na fonte" | "Candidato auditado" | "Sem vínculo de projeto";
     relation: "Forte" | "Média" | "Fraca" | "Sem relação confirmada";
     payment: "Não informado" | "Informado" | "Com comprovante";
   }>;

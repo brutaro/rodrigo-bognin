@@ -44,3 +44,7 @@ next-env.d.ts
 # local demonstration state
 /var/*
 !/var/.gitkeep
+
+# local Docker secrets
+/.secrets/
+.env.docker

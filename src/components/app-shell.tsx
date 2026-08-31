@@ -1,7 +1,9 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { isDatabaseConfigured } from "@/lib/database";
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const localData = isDatabaseConfigured();
   return (
     <div className="min-h-screen bg-[var(--surface-subtle)]">
       <header className="border-b border-[var(--border)] bg-white">
@@ -15,9 +17,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span className="block text-xs text-[var(--ink-muted)]">Prestação de contas</span>
             </span>
           </Link>
+          <nav aria-label="Navegação principal" className="hidden items-center gap-1 lg:flex">
+            <Link href="/" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Meu trabalho</Link>
+            <Link href="/projetos" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Projetos</Link>
+            <Link href="/notas-fiscais" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Notas fiscais</Link>
+            <Link href="/publicacoes" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Publicações</Link>
+          </nav>
           <div className="flex items-center gap-3">
-            <span className="hidden rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 sm:inline-flex">
-              Dados fictícios
+            <span className={`hidden rounded-full px-3 py-1.5 text-xs font-semibold sm:inline-flex ${localData ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+              {localData ? "Dados locais privados" : "Dados fictícios"}
             </span>
             <span className="grid size-9 place-items-center rounded-full bg-slate-100 text-sm font-bold text-slate-700" aria-label="Conta de Rodrigo">
               R
@@ -25,9 +33,17 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </header>
-      <div className="border-b border-amber-200 bg-amber-50">
-        <p className="mx-auto max-w-7xl px-5 py-2 text-sm text-amber-900 lg:px-8">
-          Ambiente de demonstração. Nenhum dado real foi carregado.
+      <nav aria-label="Navegação principal móvel" className="flex gap-1 overflow-x-auto border-b border-[var(--border)] bg-white px-5 py-2 lg:hidden">
+        <Link href="/" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Meu trabalho</Link>
+        <Link href="/projetos" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Projetos</Link>
+        <Link href="/notas-fiscais" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Notas fiscais</Link>
+        <Link href="/publicacoes" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Publicações</Link>
+      </nav>
+      <div className={`border-b ${localData ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+        <p className={`mx-auto max-w-7xl px-5 py-2 text-sm lg:px-8 ${localData ? "text-emerald-900" : "text-amber-900"}`}>
+          {localData
+            ? "Ambiente local privado. Carga controlada disponível somente nesta máquina; nenhum deploy externo foi feito."
+            : "Ambiente de demonstração. Nenhum dado real foi carregado."}
         </p>
       </div>
       {children}

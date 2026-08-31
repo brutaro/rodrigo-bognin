@@ -13,7 +13,6 @@ export type ManualFinancialKind = (typeof manualFinancialKinds)[number];
 
 export const financialOrigins = [
   "Informado por Rodrigo",
-  "Cadastro demonstrativo",
 ] as const;
 export type FinancialOrigin = (typeof financialOrigins)[number];
 
@@ -24,6 +23,7 @@ export type ManualFinancialEntry = {
   amountCents: string;
   origin: FinancialOrigin;
   documentState: "Sem arquivo associado" | "Com arquivo associado";
+  requestId?: string;
   createdAt: string;
 };
 
@@ -31,12 +31,13 @@ export type HistoryEvent = {
   id: string;
   action: string;
   detail: string;
-  actor: "Rodrigo (demonstração)";
+  actor: string;
   occurredAt: string;
 };
 
 export type DemoProjectDraft = {
   narrative: string;
+  revision?: string;
   manualFinancialEntries: ManualFinancialEntry[];
   history: HistoryEvent[];
   updatedAt: string | null;
@@ -57,6 +58,10 @@ export type PublishedFinancialEntry = {
   label: string;
   amount: string;
   amountCents: string | null;
+  relatedAmount: string | null;
+  relatedAmountCents: string | null;
+  fullValueEligible: boolean | null;
+  relationBasis: string;
   currency: "BRL";
   origin: string;
   relation: string;
@@ -65,22 +70,29 @@ export type PublishedFinancialEntry = {
   recordedAt: string | null;
 };
 
+export class PublicationIntegrityError extends Error {
+  constructor() {
+    super("A integridade da publicação falhou.");
+    this.name = "PublicationIntegrityError";
+  }
+}
+
 export type DemoPublication = {
   id: string;
   projectId: string;
   version: number;
   priorPublicationId: string | null;
   createdAt: string;
-  createdBy: "Rodrigo (demonstração)";
-  dataClassification: "Dados fictícios";
-  schemaVersion: "tria-publication-v1";
-  rendererVersion: "tria-export-v1";
+  createdBy: string;
+  dataClassification: "Dados fictícios" | "Dados privados locais";
+  schemaVersion: "tria-publication-v1" | "tria-publication-v2";
+  rendererVersion: "tria-export-v1" | "tria-export-v2";
   cutoff: {
     startDate: string;
     endDate: string;
     endInclusive: true;
     timeZone: "America/Sao_Paulo";
-    basis: "Período demonstrativo do projeto";
+    basis: string;
   };
   contentHash: string;
   recordHash: string;
@@ -141,6 +153,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function computePublicationRecordHash(publication: Omit<DemoPublication, "recordHash">) {
   return createHash("sha256")
+    .update(stableStringify({
+      id: publication.id,
+      projectId: publication.projectId,
+      version: publication.version,
+      priorPublicationId: publication.priorPublicationId,
+      createdAt: publication.createdAt,
+      createdBy: publication.createdBy,
+      contentHash: publication.contentHash,
+      review: publication.review,
+    }))
+    .digest("hex");
+}
+
+function computeLegacyPublicationRecordHash(publication: Omit<DemoPublication, "recordHash">) {
+  return createHash("sha256")
     .update(JSON.stringify({
       id: publication.id,
       projectId: publication.projectId,
@@ -172,7 +199,7 @@ async function readWorkspaceFile(): Promise<WorkspaceFile> {
         projects: legacy.projects,
         publications: legacy.publications.map((publication) => ({
           ...publication,
-          recordHash: computePublicationRecordHash(publication),
+          recordHash: computeLegacyPublicationRecordHash(publication),
         })),
       };
     }
@@ -240,11 +267,16 @@ async function updateDemoProject(
   });
 }
 
-export async function saveDemoNarrative(projectId: string, narrative: string) {
+export async function saveDemoNarrative(projectId: string, narrative: string, expectedRevision?: string) {
   const now = new Date().toISOString();
-  await updateDemoProject(projectId, (draft) => ({
+  await updateDemoProject(projectId, (draft) => {
+    if (expectedRevision !== undefined && (draft.revision ?? "0") !== expectedRevision) {
+      throw new Error("A narrativa mudou depois que este formulário foi aberto.");
+    }
+    return {
     ...draft,
     narrative,
+    revision: (BigInt(draft.revision ?? "0") + BigInt(1)).toString(),
     updatedAt: now,
     history: [
       {
@@ -256,7 +288,8 @@ export async function saveDemoNarrative(projectId: string, narrative: string) {
       },
       ...draft.history,
     ],
-  }));
+    };
+  });
 }
 
 export async function addDemoFinancialEntry(
@@ -264,29 +297,34 @@ export async function addDemoFinancialEntry(
   entry: Omit<ManualFinancialEntry, "id" | "createdAt">,
 ) {
   const now = new Date().toISOString();
-  await updateDemoProject(projectId, (draft) => ({
-    ...draft,
-    updatedAt: now,
-    manualFinancialEntries: [
-      ...draft.manualFinancialEntries,
-      { ...entry, id: randomUUID(), createdAt: now },
-    ],
-    history: [
-      {
-        id: randomUUID(),
-        action: "Valor registrado",
-        detail: `${entry.kind}: ${entry.description}.`,
-        actor: "Rodrigo (demonstração)",
-        occurredAt: now,
-      },
-      ...draft.history,
-    ],
-  }));
+  await updateDemoProject(projectId, (draft) => {
+    if (entry.requestId && draft.manualFinancialEntries.some((item) => item.requestId === entry.requestId)) return draft;
+    return {
+      ...draft,
+      revision: (BigInt(draft.revision ?? "0") + BigInt(1)).toString(),
+      updatedAt: now,
+      manualFinancialEntries: [
+        ...draft.manualFinancialEntries,
+        { ...entry, id: randomUUID(), createdAt: now },
+      ],
+      history: [
+        {
+          id: randomUUID(),
+          action: "Valor registrado",
+          detail: `${entry.kind}: ${entry.description}.`,
+          actor: "Rodrigo (demonstração)",
+          occurredAt: now,
+        },
+        ...draft.history,
+      ],
+    };
+  });
 }
 
 function publicationContent(
   project: Project,
   draft: DemoProjectDraft,
+  dataClassification: DemoPublication["dataClassification"] = "Dados fictícios",
 ): Omit<DemoPublication, "id" | "version" | "priorPublicationId" | "createdAt" | "createdBy" | "contentHash" | "recordHash" | "review"> {
   const imported: PublishedFinancialEntry[] = project.financialReferences.map((reference) => ({
     id: reference.id,
@@ -301,8 +339,12 @@ function publicationContent(
     label: reference.label,
     amount: reference.amount,
     amountCents: parseBrlToCents(reference.amount),
+    relatedAmount: reference.relatedAmount ?? null,
+    relatedAmountCents: reference.relatedAmount ? parseBrlToCents(reference.relatedAmount) : null,
+    fullValueEligible: reference.fullValueEligible ?? null,
+    relationBasis: reference.relationBasis ?? "Não informada",
     currency: "BRL",
-    origin: "Base demonstrativa importada",
+    origin: dataClassification === "Dados privados locais" ? "Base local importada" : "Base demonstrativa importada",
     relation: reference.relation,
     payment: reference.payment,
     documentState: "Não avaliado",
@@ -323,6 +365,10 @@ function publicationContent(
     label: entry.description,
     amount: formatBrlFromCents(entry.amountCents),
     amountCents: entry.amountCents,
+    relatedAmount: null,
+    relatedAmountCents: null,
+    fullValueEligible: null,
+    relationBasis: "Cadastro manual",
     currency: "BRL",
     origin: entry.origin,
     relation: "Sem relação confirmada",
@@ -332,15 +378,15 @@ function publicationContent(
   }));
   return {
     projectId: project.id,
-    dataClassification: "Dados fictícios",
-    schemaVersion: "tria-publication-v1",
-    rendererVersion: "tria-export-v1",
+    dataClassification,
+    schemaVersion: "tria-publication-v2",
+    rendererVersion: "tria-export-v2",
     cutoff: {
       startDate: project.periodStart,
       endDate: project.periodEnd,
       endInclusive: true,
       timeZone: "America/Sao_Paulo",
-      basis: "Período demonstrativo do projeto",
+      basis: dataClassification === "Dados privados locais" ? "Período registrado do projeto" : "Período demonstrativo do projeto",
     },
     title: project.name,
     period: project.period,
@@ -353,7 +399,26 @@ function publicationContent(
 
 type PublicationContent = ReturnType<typeof publicationContent>;
 
+function canonicalValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalValue);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).sort(([left], [right]) => left.localeCompare(right, "en"))
+        .map(([key, item]) => [key, canonicalValue(item)]),
+    );
+  }
+  return value;
+}
+
+function stableStringify(value: unknown) {
+  return JSON.stringify(canonicalValue(value));
+}
+
 function computePublicationContentHash(content: PublicationContent) {
+  return createHash("sha256").update(stableStringify(content)).digest("hex");
+}
+
+function computeLegacyPublicationContentHash(content: PublicationContent) {
   return createHash("sha256").update(JSON.stringify(content)).digest("hex");
 }
 
@@ -373,29 +438,43 @@ function storedPublicationContent(publication: DemoPublication): PublicationCont
   };
 }
 
-export function buildDemoCompositionHash(project: Project, draft: DemoProjectDraft) {
-  return computePublicationContentHash(publicationContent(project, draft));
+export function buildDemoCompositionHash(
+  project: Project,
+  draft: DemoProjectDraft,
+  dataClassification: DemoPublication["dataClassification"] = "Dados fictícios",
+) {
+  return computePublicationContentHash(publicationContent(project, draft, dataClassification));
 }
 
 export function verifyDemoPublicationIntegrity(publication: DemoPublication) {
-  const actual = computePublicationContentHash(storedPublicationContent(publication));
+  const content = storedPublicationContent(publication);
+  const actual = computePublicationContentHash(content);
+  const legacyActual = computeLegacyPublicationContentHash(content);
   const { recordHash, ...record } = publication;
   const actualRecordHash = computePublicationRecordHash(record);
+  const legacyRecordHash = computeLegacyPublicationRecordHash(record);
+  const canonicalValid = actual === publication.contentHash && actualRecordHash === recordHash;
+  const legacyValid = legacyActual === publication.contentHash && legacyRecordHash === recordHash;
   if (
-    actual !== publication.contentHash ||
-    publication.review.compositionHash !== actual ||
+    (!canonicalValid && !legacyValid) ||
+    publication.review.compositionHash !== publication.contentHash ||
     publication.review.caveatsAcknowledged !== true ||
     publication.review.reviewedAt !== publication.createdAt ||
-    !publication.review.requestId ||
-    actualRecordHash !== recordHash
+    !publication.review.requestId
   ) {
-    throw new Error("A integridade da publicação demonstrativa falhou.");
+    throw new PublicationIntegrityError();
   }
   return publication;
 }
 
 export function assertDemoCompositionMatches(expected: string, actual: string) {
   if (expected !== actual) throw new Error("A composição mudou depois da conferência.");
+}
+
+export function assertDraftRevision(expected: string | undefined, actual: string) {
+  if (expected !== undefined && expected !== actual) {
+    throw new Error("A composição mudou depois da conferência.");
+  }
 }
 
 export function buildPublicationSnapshot(
@@ -405,15 +484,17 @@ export function buildPublicationSnapshot(
   priorPublicationId: string | null,
   createdAt: string,
   id: string = randomUUID(),
+  dataClassification: DemoPublication["dataClassification"] = "Dados fictícios",
+  createdBy = "Rodrigo (demonstração)",
 ): DemoPublication {
-  const content = publicationContent(project, draft);
+  const content = publicationContent(project, draft, dataClassification);
   const contentHash = computePublicationContentHash(content);
   const record: Omit<DemoPublication, "recordHash"> = {
     id,
     version,
     priorPublicationId,
     createdAt,
-    createdBy: "Rodrigo (demonstração)",
+    createdBy,
     contentHash,
     review: {
       compositionHash: contentHash,
@@ -430,12 +511,14 @@ export async function publishDemoProject(
   projectId: string,
   expectedCompositionHash?: string,
   caveatsAcknowledged = false,
+  expectedRevision?: string,
 ): Promise<{ publication: DemoPublication; created: boolean }> {
   assertKnownProject(projectId);
   return updateWorkspace((state) => {
     const project = demoProjects.find((item) => item.id === projectId);
     if (!project) throw new Error("Projeto demonstrativo desconhecido.");
     const draft = state.projects[projectId] ?? emptyDraft(projectId);
+    assertDraftRevision(expectedRevision, draft.revision ?? "0");
     if (draft.narrative.trim().length < 20) {
       throw new Error("A narrativa precisa ter pelo menos 20 caracteres.");
     }
@@ -495,21 +578,23 @@ export function parseBrlToCents(input: string): string | null {
   if (!clean || clean.startsWith("-") || !/^[0-9.,]+$/.test(clean)) return null;
   let integerPart: string;
   let decimalPart: string;
-  if (clean.includes(",")) {
-    const parts = clean.split(",");
-    if (parts.length !== 2 || parts[1].length > 2) return null;
-    integerPart = parts[0].replace(/\./g, "");
-    decimalPart = parts[1].padEnd(2, "0");
-  } else if (/\.\d{1,2}$/.test(clean)) {
-    const lastDot = clean.lastIndexOf(".");
-    integerPart = clean.slice(0, lastDot).replace(/\./g, "");
-    decimalPart = clean.slice(lastDot + 1).padEnd(2, "0");
+  if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(clean)) {
+    const [integer, decimal = ""] = clean.split(",");
+    integerPart = integer.replace(/\./g, "");
+    decimalPart = decimal.padEnd(2, "0") || "00";
+  } else if (/^\d+(?:,\d{1,2})?$/.test(clean)) {
+    const [integer, decimal = ""] = clean.split(",");
+    integerPart = integer;
+    decimalPart = decimal.padEnd(2, "0") || "00";
+  } else if (/^\d+\.\d{1,2}$/.test(clean)) {
+    const [integer, decimal] = clean.split(".");
+    integerPart = integer;
+    decimalPart = decimal.padEnd(2, "0");
   } else {
-    integerPart = clean.replace(/\./g, "");
-    decimalPart = "00";
+    return null;
   }
-  if (!/^\d+$/.test(integerPart) || !/^\d{2}$/.test(decimalPart)) return null;
-  return (BigInt(integerPart || "0") * BigInt(100) + BigInt(decimalPart)).toString();
+  const cents = (BigInt(integerPart) * BigInt(100) + BigInt(decimalPart)).toString();
+  return cents.length <= 24 ? cents : null;
 }
 
 export function formatBrlFromCents(amountCents: string): string {

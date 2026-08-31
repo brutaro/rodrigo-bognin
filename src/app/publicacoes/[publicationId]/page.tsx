@@ -2,13 +2,14 @@ import { createHash } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { ActivityPagination, activityPageSize, normalizeActivityPage } from "@/components/activity-pagination";
 import { Notice } from "@/components/notice";
 import {
   buildPublicationCsv,
   buildPublicationHtml,
-  toPublicPublicationV1,
+  toPublicPublication,
 } from "@/lib/demo-publication-export";
-import { readDemoPublication } from "@/lib/demo-workspace";
+import { readPublication } from "@/lib/workspace";
 
 function displayDate(iso: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -22,15 +23,20 @@ function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+export const dynamic = "force-dynamic";
+
 export default async function PublicationPage({ params, searchParams }: PageProps<"/publicacoes/[publicationId]">) {
   const { publicationId } = await params;
-  const publication = await readDemoPublication(publicationId);
+  const publication = await readPublication(publicationId);
   if (!publication) notFound();
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
-  const view = toPublicPublicationV1(publication);
+  const view = toPublicPublication(publication);
   const htmlHash = sha256(buildPublicationHtml(publication));
   const csvHash = sha256(buildPublicationCsv(publication));
+  const activityPage = normalizeActivityPage(typeof query.activityPage === "string" ? query.activityPage : undefined, view.activities.length);
+  const activityStart = (activityPage - 1) * activityPageSize;
+  const visibleActivities = view.activities.slice(activityStart, activityStart + activityPageSize);
 
   return (
     <AppShell>
@@ -67,11 +73,11 @@ export default async function PublicationPage({ params, searchParams }: PageProp
         <div className="mt-6 grid gap-6">
           <section aria-labelledby="published-narrative" className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-sm"><h2 id="published-narrative" className="text-xl font-bold">O que foi feito</h2><p className="mt-4 whitespace-pre-wrap text-base leading-7 text-slate-700">{view.narrative}</p></section>
 
-          <section aria-labelledby="published-activities" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm"><div className="border-b border-[var(--border)] p-5"><h2 id="published-activities" className="text-xl font-bold">Atividades e medições</h2><p className="mt-1 text-sm text-slate-500">Medição não comprova faturamento ou pagamento.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Código</th><th className="px-5 py-3">Atividade</th><th className="px-5 py-3">BM</th><th className="px-5 py-3">Horas</th><th className="px-5 py-3 text-right">Medido</th></tr></thead><tbody className="divide-y divide-[var(--border)]">{view.activities.map((item) => <tr key={item.code}><td className="px-5 py-4 text-xs text-slate-500">{item.code}</td><td className="px-5 py-4 font-semibold">{item.description}</td><td className="px-5 py-4">{item.bm}</td><td className="px-5 py-4">{item.hours}</td><td className="px-5 py-4 text-right font-semibold">{item.measuredValue}</td></tr>)}</tbody></table></div></section>
+          <section aria-labelledby="published-activities" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm"><div className="border-b border-[var(--border)] p-5"><h2 id="published-activities" className="text-xl font-bold">Atividades e medições</h2><p className="mt-1 text-sm text-slate-500">Medição não comprova faturamento ou pagamento. Mostrando {visibleActivities.length ? activityStart + 1 : 0}–{activityStart + visibleActivities.length} de {view.activities.length} atividades.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[620px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-5 py-3">Código</th><th className="px-5 py-3">Atividade</th><th className="px-5 py-3">BM</th><th className="px-5 py-3">Horas</th><th className="px-5 py-3 text-right">Medido</th></tr></thead><tbody className="divide-y divide-[var(--border)]">{visibleActivities.map((item) => <tr key={item.code}><td className="px-5 py-4 text-xs text-slate-500">{item.code}</td><td className="px-5 py-4 font-semibold">{item.description}</td><td className="px-5 py-4">{item.bm}</td><td className="px-5 py-4">{item.hours}</td><td className="px-5 py-4 text-right font-semibold">{item.measuredValue}</td></tr>)}</tbody></table></div><ActivityPagination basePath={`/publicacoes/${encodeURIComponent(publication.id)}`} page={activityPage} total={view.activities.length} anchor="published-activities" /></section>
 
-          <section aria-labelledby="published-finance" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm"><div className="border-b border-[var(--border)] p-5"><h2 id="published-finance" className="text-xl font-bold">Referências financeiras</h2><p className="mt-1 text-sm text-slate-500">Os grupos permanecem separados. Não há soma automática.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Código</th><th className="px-4 py-3">Grupo</th><th className="px-4 py-3">Descrição</th><th className="px-4 py-3">Valor</th><th className="px-4 py-3">Origem</th><th className="px-4 py-3">Relação</th><th className="px-4 py-3">Pagamento</th></tr></thead><tbody className="divide-y divide-[var(--border)]">{view.financialEntries.map((item) => <tr key={item.code}><td className="px-4 py-4 text-xs text-slate-500">{item.code}</td><td className="px-4 py-4 font-mono text-xs">{item.groupCode}</td><td className="px-4 py-4"><strong className="block">{item.label}</strong><span className="text-xs text-slate-500">{item.sourceType} · {item.kind}</span></td><td className="px-4 py-4 font-semibold">{item.amount}</td><td className="px-4 py-4">{item.origin}</td><td className="px-4 py-4">{item.relation}</td><td className="px-4 py-4">{item.payment}</td></tr>)}</tbody></table></div></section>
+          <section aria-labelledby="published-finance" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm"><div className="border-b border-[var(--border)] p-5"><h2 id="published-finance" className="text-xl font-bold">Referências financeiras</h2><p className="mt-1 text-sm text-slate-500">Valor bruto, valor relacionado, elegibilidade e pagamento permanecem distintos.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Código</th><th className="px-4 py-3">Grupo</th><th className="px-4 py-3">Descrição</th><th className="px-4 py-3">Valor bruto</th><th className="px-4 py-3">Valor relacionado</th><th className="px-4 py-3">Integral elegível</th><th className="px-4 py-3">Base</th><th className="px-4 py-3">Relação</th><th className="px-4 py-3">Pagamento</th></tr></thead><tbody className="divide-y divide-[var(--border)]">{view.financialEntries.map((item) => <tr key={item.code}><td className="px-4 py-4 text-xs text-slate-500">{item.code}</td><td className="px-4 py-4 font-mono text-xs">{item.groupCode}</td><td className="px-4 py-4"><strong className="block">{item.label}</strong><span className="text-xs text-slate-500">{item.sourceType} · {item.kind}</span></td><td className="px-4 py-4 font-semibold">{item.amount}</td><td className="px-4 py-4 font-semibold">{"relatedAmount" in item ? item.relatedAmount ?? "Não informado" : "Não informado"}</td><td className="px-4 py-4">{"fullValueEligible" in item ? item.fullValueEligible === true ? "Sim" : item.fullValueEligible === false ? "Não" : "Não avaliado" : "Não avaliado"}</td><td className="px-4 py-4">{"relationBasis" in item ? item.relationBasis : "Não informada"}</td><td className="px-4 py-4">{item.relation}</td><td className="px-4 py-4">{item.payment}</td></tr>)}</tbody></table></div></section>
 
-          <section aria-labelledby="published-evidence" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm"><div className="border-b border-[var(--border)] p-5"><h2 id="published-evidence" className="text-xl font-bold">Registros de evidência</h2><p className="mt-1 text-sm text-slate-500">Nenhum arquivo faz parte desta demonstração. Somente metadados fictícios foram publicados.</p></div><ul className="divide-y divide-[var(--border)]">{view.evidence.map((item) => <li key={item.code} className="p-5"><div className="flex flex-col gap-2 sm:flex-row sm:justify-between"><div><strong>{item.name}</strong><p className="mt-1 text-xs text-slate-500">{item.code} · {item.kind}</p></div><span className="text-sm font-semibold text-amber-800">{item.availability}</span></div><p className="mt-2 text-xs text-slate-500">{item.packageState}</p></li>)}</ul></section>
+          <section aria-labelledby="published-evidence" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm"><div className="border-b border-[var(--border)] p-5"><h2 id="published-evidence" className="text-xl font-bold">Registros de evidência</h2><p className="mt-1 text-sm text-slate-500">{publication.dataClassification === "Dados privados locais" ? "Nenhum byte de arquivo foi incluído. Somente metadados locais permitidos foram publicados." : "Nenhum arquivo faz parte desta demonstração. Somente metadados fictícios foram publicados."}</p></div><ul className="divide-y divide-[var(--border)]">{view.evidence.map((item) => <li key={item.code} className="p-5"><div className="flex flex-col gap-2 sm:flex-row sm:justify-between"><div><strong>{item.name}</strong><p className="mt-1 text-xs text-slate-500">{item.code} · {item.kind}</p></div><span className="text-sm font-semibold text-amber-800">{item.availability}</span></div><p className="mt-2 text-xs text-slate-500">{item.packageState}</p></li>)}</ul></section>
         </div>
 
         <section className="mt-6 rounded-2xl border border-[var(--border)] bg-white p-5 text-sm text-slate-600"><p><strong>Integridade:</strong> <span className="break-all font-mono text-xs">{view.contentHash}</span></p><p className="mt-2">Esquema {view.schemaVersion} · renderizador {view.rendererVersion}.</p><Link href={`/projetos/${publication.projectId}`} className="mt-4 inline-block font-bold text-[var(--brand)] hover:underline">Fazer uma correção no rascunho</Link></section>

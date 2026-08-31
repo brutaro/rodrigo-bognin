@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getDemoProject } from "./demo-data";
 import {
   assertDemoCompositionMatches,
+  assertDraftRevision,
   buildDemoCompositionHash,
   buildPublicationSnapshot,
   formatBrlFromCents,
@@ -41,7 +42,7 @@ describe("parseBrlToCents", () => {
     expect(parseBrlToCents(input)).toBe(expected);
   });
 
-  it.each(["", "-1,00", "abc", "1,234", "1,2,3"])("rejeita %s", (input) => {
+  it.each(["", "-1,00", "abc", "1,234", "1,2,3", "1.2.3", "12345678901234567890123,00"])("rejeita %s", (input) => {
     expect(parseBrlToCents(input)).toBeNull();
   });
 });
@@ -98,12 +99,30 @@ describe("snapshot de publicação", () => {
     expect(() => verifyDemoPublicationIntegrity(metadataTampered)).toThrow(/integridade/);
   });
 
+  it("mantém a integridade quando JSONB reordena as chaves", () => {
+    const snapshot = buildPublicationSnapshot(project, draft(), 1, null, "2026-08-31T12:30:00.000Z");
+    const reorder = (value: unknown): unknown => {
+      if (Array.isArray(value)) return value.map(reorder);
+      if (value !== null && typeof value === "object") {
+        return Object.fromEntries(Object.entries(value).reverse().map(([key, item]) => [key, reorder(item)]));
+      }
+      return value;
+    };
+    const persisted = reorder(snapshot) as typeof snapshot;
+    expect(verifyDemoPublicationIntegrity(persisted)).toBe(persisted);
+  });
+
   it("mantém o hash para a mesma composição e muda após edição", () => {
     const first = draft();
     const same = structuredClone(first);
     const changed = draft("Outra narrativa demonstrativa com contexto suficiente para publicação.");
     expect(buildDemoCompositionHash(project, first)).toBe(buildDemoCompositionHash(project, same));
     expect(buildDemoCompositionHash(project, first)).not.toBe(buildDemoCompositionHash(project, changed));
+  });
+
+  it("recusa revisão obsoleta mesmo quando o conteúdo volta ao hash anterior", () => {
+    expect(() => assertDraftRevision("4", "6")).toThrow(/composição mudou/);
+    expect(() => assertDraftRevision("6", "6")).not.toThrow();
   });
 
   it("recusa um token de conferência obsoleto", () => {

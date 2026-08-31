@@ -1,22 +1,23 @@
+import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { ActivityPagination, activityPageSize, normalizeActivityPage } from "@/components/activity-pagination";
 import { Notice } from "@/components/notice";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
-import { demoProjects, getDemoProject } from "@/lib/demo-data";
+import { getProjectDetails } from "@/lib/project-repository";
+import { isDatabaseConfigured } from "@/lib/database";
 import {
   financialOrigins,
   formatBrlFromCents,
   manualFinancialKinds,
-  listDemoProjectPublications,
-  readDemoProjectDraft,
-} from "@/lib/demo-workspace";
+  listProjectPublications,
+  readProjectDraft,
+} from "@/lib/workspace";
 import { addFinancialEntryAction, saveNarrativeAction } from "./actions";
 
-export function generateStaticParams() {
-  return demoProjects.map((project) => ({ id: project.id }));
-}
+export const dynamic = "force-dynamic";
 
 function displayDate(iso: string) {
   return new Intl.DateTimeFormat("pt-BR", {
@@ -28,14 +29,19 @@ function displayDate(iso: string) {
 
 export default async function ProjectPage({ params, searchParams }: PageProps<"/projetos/[id]">) {
   const { id } = await params;
-  const project = getDemoProject(id);
+  const localData = isDatabaseConfigured();
+  const project = await getProjectDetails(id);
   if (!project) notFound();
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
-  const draft = await readDemoProjectDraft(project.id);
-  const latestPublication = (await listDemoProjectPublications(project.id))[0];
+  const draft = await readProjectDraft(project.id);
+  const latestPublication = (await listProjectPublications(project.id))[0];
   const saveNarrative = saveNarrativeAction.bind(null, project.id);
   const addFinancialEntry = addFinancialEntryAction.bind(null, project.id);
+  const financialRequestId = randomUUID();
+  const activityPage = normalizeActivityPage(typeof query.activityPage === "string" ? query.activityPage : undefined, project.activities.length);
+  const activityStart = (activityPage - 1) * activityPageSize;
+  const visibleActivities = project.activities.slice(activityStart, activityStart + activityPageSize);
 
   return (
     <AppShell>
@@ -53,7 +59,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               </div>
               <h1 className="mt-4 max-w-4xl text-3xl font-bold tracking-tight text-[var(--ink)]">{project.name}</h1>
               <p className="mt-3 text-sm text-[var(--ink-muted)]">
-                {draft.updatedAt ? `Salvo em ${displayDate(draft.updatedAt)}` : "Ainda sem alterações demonstrativas"}
+                {draft.updatedAt ? `Salvo em ${displayDate(draft.updatedAt)}` : localData ? "Ainda sem alterações locais" : "Ainda sem alterações demonstrativas"}
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row">
@@ -70,9 +76,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <section aria-labelledby="narrative-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
               <div className="border-b border-[var(--border)] p-5">
                 <h2 id="narrative-title" className="text-lg font-bold text-[var(--ink)]">O que foi feito</h2>
-                <p className="mt-1 text-sm text-[var(--ink-muted)]">Escreva em primeira pessoa. Salvar cria um registro no histórico demonstrativo.</p>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Escreva em primeira pessoa. Salvar cria um registro no histórico {localData ? "local" : "demonstrativo"}.</p>
               </div>
               <form action={saveNarrative} className="p-5">
+                <input type="hidden" name="expectedRevision" value={draft.revision ?? "0"} />
                 <label htmlFor="narrative" className="mb-2 block text-sm font-semibold text-[var(--ink)]">Narrativa do projeto</label>
                 <textarea
                   id="narrative"
@@ -85,7 +92,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                   className="w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-blue-100"
                 />
                 <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-slate-500">Dados fictícios. Nenhum texto real foi carregado.</p>
+                  <p className="text-xs text-slate-500">{localData ? "Dados privados locais. Revise antes de publicar." : "Dados fictícios. Nenhum texto real foi carregado."}</p>
                   <SubmitButton idleLabel="Salvar narrativa" pendingLabel="Salvando…" />
                 </div>
               </form>
@@ -94,7 +101,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <section aria-labelledby="activities-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
               <div className="border-b border-[var(--border)] p-5">
                 <h2 id="activities-title" className="text-lg font-bold text-[var(--ink)]">Atividades e medições</h2>
-                <p className="mt-1 text-sm text-[var(--ink-muted)]">Os valores medidos não são tratados como pagamentos.</p>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Os valores medidos não são tratados como pagamentos. Mostrando {visibleActivities.length ? activityStart + 1 : 0}–{activityStart + visibleActivities.length} de {project.activities.length}.</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[640px] text-left text-sm">
@@ -102,7 +109,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                     <tr><th className="px-5 py-3 font-semibold">Atividade</th><th className="px-5 py-3 font-semibold">BM</th><th className="px-5 py-3 font-semibold">Horas</th><th className="px-5 py-3 text-right font-semibold">Medido</th></tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border)]">
-                    {project.activities.map((activity) => (
+                    {visibleActivities.map((activity) => (
                       <tr key={activity.id}>
                         <td className="px-5 py-4"><span className="block font-medium text-[var(--ink)]">{activity.description}</span><span className="mt-1 block text-xs text-slate-500">{activity.id}</span></td>
                         <td className="px-5 py-4 text-slate-600">{activity.bm}</td>
@@ -113,6 +120,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                   </tbody>
                 </table>
               </div>
+              <ActivityPagination basePath={`/projetos/${encodeURIComponent(project.id)}`} page={activityPage} total={project.activities.length} />
             </section>
 
             <section aria-labelledby="finance-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
@@ -127,8 +135,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                       <div><p className="text-xs font-bold uppercase tracking-wide text-[var(--brand)]">{reference.kind}</p><h3 className="mt-1 font-semibold text-[var(--ink)]">{reference.label}</h3><p className="mt-1 text-xs text-slate-500">Origem importada · {reference.id}</p></div>
                       <p className="text-lg font-bold text-[var(--ink)]">{reference.amount}</p>
                     </div>
-                    <dl className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2">
-                      <div><dt className="text-xs text-slate-500">Relação</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{reference.relation}</dd></div>
+                    <dl className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
+                      <div><dt className="text-xs text-slate-500">Base do vínculo</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{reference.relationBasis ?? "Não informada"}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Relação auditada</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{reference.relation}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Valor relacionado verificado</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{reference.relatedAmount ?? "Não informado"}</dd></div>
+                      <div><dt className="text-xs text-slate-500">Valor integral elegível</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{reference.fullValueEligible === true ? "Sim" : reference.fullValueEligible === false ? "Não" : "Não avaliado"}</dd></div>
                       <div><dt className="text-xs text-slate-500">Pagamento</dt><dd className="mt-1 text-sm font-semibold text-slate-700">{reference.payment}</dd></div>
                     </dl>
                   </article>
@@ -147,6 +158,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               <details className="border-t border-[var(--border)] p-5">
                 <summary className="cursor-pointer text-sm font-bold text-[var(--brand)]">Adicionar valor</summary>
                 <form action={addFinancialEntry} className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <input type="hidden" name="requestId" value={financialRequestId} />
                   <label className="block text-sm font-semibold text-[var(--ink)]">Tipo
                     <select name="kind" required defaultValue="" className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-normal">
                       <option value="" disabled>Escolha o que o valor representa</option>
@@ -190,7 +202,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                     <li key={event.id} className="p-5"><p className="text-sm font-semibold text-[var(--ink)]">{event.action}</p><p className="mt-1 text-xs leading-5 text-slate-500">{event.detail}</p><p className="mt-2 text-xs text-slate-500">{event.actor} · {displayDate(event.occurredAt)}</p></li>
                   ))}
                 </ol>
-              ) : <p className="p-5 text-sm text-[var(--ink-muted)]">Nenhuma alteração demonstrativa registrada.</p>}
+              ) : <p className="p-5 text-sm text-[var(--ink-muted)]">{localData ? "Nenhuma alteração local registrada." : "Nenhuma alteração demonstrativa registrada."}</p>}
             </section>
           </aside>
         </div>

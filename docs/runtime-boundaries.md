@@ -1,47 +1,47 @@
-# Limites do runtime demonstrativo
+# Limites do runtime local
 
-## O que está ativo
+## Persistência ativa
 
-O MVP usa um arquivo JSON local em `var/` para validar o fluxo sem custo e sem dados reais.
+A pilha Docker usa PostgreSQL como único escritor operacional. O fallback JSON permanece somente para testes e para a demonstração sem banco. Ele não é usado quando `PGHOST` ou `DATABASE_URL` está configurado.
 
-- Uma fila no processo serializa as gravações.
-- A gravação usa arquivo temporário e renomeação atômica.
-- A prévia gera um hash da composição.
-- Uma alteração após a prévia invalida esse hash.
-- A publicação adiciona um snapshot e nunca expõe uma operação de edição ou exclusão.
-- Uma tentativa repetida com o mesmo conteúdo retorna a publicação existente.
-- A leitura verifica o SHA-256 do snapshot antes de exibir ou exportar.
+O PostgreSQL aplica:
 
-Esse mecanismo serve somente para uma instância local, um processo e dados fictícios. O arquivo JSON pode ser alterado por quem tiver acesso ao sistema operacional. Por isso, ele não é armazenamento adequado para dados reais ou produção.
+- transações para narrativa, valores e publicação;
+- advisory lock por projeto durante a publicação;
+- versão única por projeto;
+- snapshot e histórico append-only;
+- recusa de `UPDATE` e `DELETE` em publicações e eventos;
+- hash estável mesmo quando JSONB reordena chaves;
+- papéis separados de administrador, migrador e aplicação;
+- privilégios mínimos por tabela e coluna.
 
-## Condições antes de usar PostgreSQL
+## Dados carregados
 
-A migração para PostgreSQL/Railway deve ocorrer somente depois de aprovação de custo e ambiente privado. Ela deve incluir:
+A carga local contém 59 projetos, 3.364 atividades, 142 NFS-e, 142 classificações financeiras, 53 hashes de evidência e 72 vínculos.
 
-1. autenticação de Rodrigo;
-2. transação com bloqueio da revisão do projeto;
-3. comparação do hash conferido dentro da mesma transação;
-4. chave única de idempotência e versão única por projeto;
-5. tabelas append-only para publicações e eventos;
-6. proibição de `UPDATE` e `DELETE` em snapshots publicados;
-7. backup e teste de restauração.
+Não são persistidos pessoa, CPF/documento, tomador, descrição fiscal privada, campo reservado ou caminho bruto. O aplicativo também não recebe privilégio para consultar os locators internos de importação.
 
-Mais de uma instância da aplicação não pode usar o arquivo JSON. A fila atual não coordena processos ou máquinas diferentes.
+A coincidência textual só cria candidato financeiro quando corresponde exatamente ao título canônico após normalização determinística. Não há fuzzy match. Relação e pagamento não são inferidos.
 
-## Evidências e R2
+## Rede e autenticação
 
-Uploads estão desativados. A publicação atual contém somente metadados fictícios de evidência. Nenhum byte de arquivo é incluído.
+A aplicação não tem autenticação. Por isso:
 
-Antes de habilitar R2 privado, cada membro publicado deve congelar:
+- a porta é publicada somente em `127.0.0.1`;
+- o PostgreSQL não publica porta no host;
+- não se deve expor a aplicação à rede local ou Internet;
+- uma segunda conta ou acesso remoto exige novo desenho de autenticação.
 
-- chave pública interna opaca;
-- `objectVersionId` ou versão equivalente;
-- tamanho;
-- tipo de mídia validado;
-- SHA-256 verificado no download.
+## Arquivos e R2
 
-O limite interno deve recusar novos uploads antes de aproximadamente 9 GB. Não haverá segundo provedor ou upgrade automático. Ativar R2, Railway, dados reais ou cobrança exige decisão expressa de Rodrigo.
+Uploads e R2 continuam desativados. A aplicação expõe somente metadados permitidos de evidência; nenhum caminho nem byte de arquivo entra na publicação.
 
-## Escopo atual de publicação
+Se R2 for autorizado no futuro, deve usar bucket privado, SHA-256 verificado, versão congelada e limite interno aproximado de 9 GB. Não haverá segundo provedor, upgrade automático ou cobrança não aprovada.
 
-A publicação cobre um projeto demonstrativo e todo o período inclusivo registrado nele. Seleção de vários projetos e corte personalizado ficam fora desta fatia. Uma versão futura deve congelar a regra de corte e a cobertura escolhida antes de qualquer publicação combinada.
+## Deploy
+
+Railway, R2, OCI e qualquer deploy externo estão desativados. A conclusão da validação local não concede autorização de deploy.
+
+## Operação destrutiva
+
+O volume PostgreSQL é persistente. `docker compose down -v` apaga o banco e não pode ser executado sem autorização expressa de Rodrigo.

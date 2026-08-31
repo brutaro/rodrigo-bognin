@@ -8,10 +8,16 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "check": "npm run test && npm run lint && npm run build"
+    "check": "npm run test && npm run lint && npm run build",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:import": "node scripts/import-real-data.mjs",
+    "db:validate": "node scripts/validate-database.mjs",
+    "test:integration": "node scripts/integration-smoke.mjs"
   },
   "dependencies": {
+    "csv-parse": "^7.0.2",
     "next": "16.3.3",
+    "postgres": "^3.4.9",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
