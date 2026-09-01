@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { assertSameOrigin, requireAuthenticatedPage } from "@/lib/auth";
 import { adjustFiscalNote, restoreFiscalNote, AdjustmentConflictError, DuplicateFiscalNoteError } from "@/lib/source-adjustment-repository";
-import { assertAdjustmentReason, assertRequestId, assertRevision, parseFiscalBrlDecimal, parseNullableProject, parseNullableText, parseOptionalFiscalBrlDecimal, parseTriState, parseIsoDate } from "@/lib/source-adjustment-validation";
+import { assertAdjustmentReason, assertFiscalRelationTuple, assertRequestId, assertRevision, parseFiscalBrlDecimal, parseNullableProject, parseNullableText, parseOptionalFiscalBrlDecimal, parseTriState, parseIsoDate } from "@/lib/source-adjustment-validation";
 import type { AdjustmentActionState } from "@/lib/source-adjustment-types";
 
 function text(formData: FormData, name: string) { const value = formData.get(name); return typeof value === "string" ? value.trim() : ""; }
@@ -27,15 +27,18 @@ export async function saveFiscalNoteAdjustmentAction(_previous: AdjustmentAction
     const fullValueEligible = parseTriState(text(formData, "fullValueEligible"));
     const verifiedRelatedValue = parseOptionalFiscalBrlDecimal(text(formData, "verifiedRelatedValue"));
     const amount = parseFiscalBrlDecimal(text(formData, "amount"));
+    const strength = parseNullableText(text(formData, "strength"), 100) ?? "Sem relação verificável";
+    const relationState = parseNullableText(text(formData, "relationState"), 100) ?? "Não informado";
+    const criterion = parseNullableText(text(formData, "criterion"), 500);
+    assertFiscalRelationTuple({ amount, candidateProjectId, relationStrength: strength, relationState, criterion,
+      fullValueEligible, verifiedRelatedValue });
     await adjustFiscalNote({
       id: text(formData, "fiscalNoteId"), expectedRevision: assertRevision(text(formData, "expectedRevision")),
       requestId: assertRequestId(text(formData, "requestId")), reason: assertAdjustmentReason(text(formData, "reason")),
       issueYear: Number(issueYearText), number: parseNullableText(text(formData, "number"), 100) ?? "",
       issueDate, amount, category: parseNullableText(text(formData, "category"), 200),
       declaredProjectId: parseNullableProject(text(formData, "declaredProjectId")), candidateProjectId,
-      strength: parseNullableText(text(formData, "strength"), 100) ?? "Sem relação verificável",
-      relationState: parseNullableText(text(formData, "relationState"), 100) ?? "Não informado",
-      criterion: parseNullableText(text(formData, "criterion"), 500), fullValueEligible, verifiedRelatedValue,
+      strength, relationState, criterion, fullValueEligible, verifiedRelatedValue,
       confirmDuplicate: formData.get("confirmDuplicate") === "yes",
     });
     revalidatePath("/notas-fiscais"); revalidatePath("/projetos");

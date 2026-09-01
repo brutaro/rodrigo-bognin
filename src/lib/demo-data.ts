@@ -14,14 +14,22 @@ export type Project = {
     bm: string;
     hours: string;
     measuredValue: string;
+    durationSeconds?: string | null;
+    measuredValueDecimal?: string | null;
     sourceHours?: string;
+    sourceDurationSeconds?: string | null;
     sourceMeasuredValue?: string;
+    sourceMeasuredValueDecimal?: string | null;
     adjustmentRevision?: string;
     adjustmentOperation?: "adjust" | "restore" | null;
     adjusted?: boolean;
     adjustmentReason?: string | null;
     adjustedBy?: string | null;
     adjustedAt?: string | null;
+    adjustmentHistory?: Array<{
+      revision: string; operation: "adjust" | "restore"; reason: string; actor: string; adjustedAt: string;
+      beforeHours: string; afterHours: string; beforeMeasuredValue: string; afterMeasuredValue: string;
+    }>;
   }>;
   financialReferences: Array<{
     id: string;

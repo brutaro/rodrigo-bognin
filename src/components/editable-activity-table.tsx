@@ -2,11 +2,16 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import type { AdjustmentActionState } from "@/lib/source-adjustment-types";
+import { durationSecondsToInput } from "../lib/source-adjustment-validation";
 
 type ActivityRow = {
   id: string; description: string; bm: string; hours: string; measuredValue: string;
-  sourceHours?: string; sourceMeasuredValue?: string; adjustmentRevision?: string; adjusted?: boolean;
+  durationSeconds?: string | null; measuredValueDecimal?: string | null;
+  sourceHours?: string; sourceDurationSeconds?: string | null; sourceMeasuredValue?: string; sourceMeasuredValueDecimal?: string | null;
+  adjustmentRevision?: string; adjusted?: boolean;
   adjustmentOperation?: "adjust" | "restore" | null; adjustmentReason?: string | null; adjustedBy?: string | null; adjustedAt?: string | null;
+  adjustmentHistory?: Array<{ revision: string; operation: "adjust" | "restore"; reason: string; actor: string; adjustedAt: string;
+    beforeHours: string; afterHours: string; beforeMeasuredValue: string; afterMeasuredValue: string }>;
   adjustmentRequestId: string; restoreRequestId: string;
 };
 
@@ -16,6 +21,18 @@ const initial: AdjustmentActionState = { status: "idle", message: "" };
 function dateTime(value?: string | null) {
   if (!value) return null;
   return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(value));
+}
+
+function ActivityHistory({ history }: { history: NonNullable<ActivityRow["adjustmentHistory"]> }) {
+  if (!history.length) return null;
+  return <details className="rounded-xl border border-slate-200 p-3 text-xs"><summary className="cursor-pointer font-bold text-slate-800">Cadeia completa de ajustes ({history.length})</summary>
+    <ol className="mt-3 space-y-3">{history.map((item) => <li key={item.revision} className="border-l-2 border-blue-200 pl-3">
+      <strong>Revisão {item.revision} · {item.operation === "restore" ? "restauração" : "ajuste"}</strong>
+      <span className="block">Antes: {item.beforeHours} · {item.beforeMeasuredValue}</span>
+      <span className="block">Depois: {item.afterHours} · {item.afterMeasuredValue}</span>
+      <span className="block">{item.actor} · {dateTime(item.adjustedAt)} · Motivo: {item.reason}</span>
+    </li>)}</ol>
+  </details>;
 }
 
 function ActionFeedback({ state }: { state: AdjustmentActionState }) {
@@ -32,18 +49,19 @@ function ActionFeedback({ state }: { state: AdjustmentActionState }) {
 function Editor({ activity, saveAction, restoreAction }: { activity: ActivityRow; saveAction: Action; restoreAction: Action }) {
   const [saveState, submitSave, savePending] = useActionState(saveAction, initial);
   const [restoreState, submitRestore, restorePending] = useActionState(restoreAction, initial);
-  const effectiveHoursPresent = activity.hours !== "Não informado";
-  const effectiveMeasurementPresent = activity.measuredValue !== "Não informado";
+  const effectiveHoursPresent = activity.durationSeconds !== undefined ? activity.durationSeconds !== null : activity.hours !== "Não informado";
+  const effectiveMeasurementPresent = activity.measuredValueDecimal !== undefined ? activity.measuredValueDecimal !== null : activity.measuredValue !== "Não informado";
   return <div className="space-y-4">
     <div className="grid gap-3 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-2">
       <div><strong className="block text-slate-700">Auditoria importada</strong><span>Horas: {activity.sourceHours ?? activity.hours}</span><span className="block">Medição: {activity.sourceMeasuredValue ?? activity.measuredValue}</span></div>
       <div><strong className="block text-blue-900">{activity.adjustmentOperation === "restore" ? "Restaurado para a auditoria importada" : activity.adjusted ? "Ajustado por Rodrigo" : "Efetivo sem ajuste"}</strong><span>Horas: {activity.hours}</span><span className="block">Medição: {activity.measuredValue}</span></div>
     </div>
+    <ActivityHistory history={activity.adjustmentHistory ?? []} />
     {activity.adjusted ? <p className="text-xs leading-5 text-slate-600">Revisão {activity.adjustmentRevision} · {activity.adjustedBy} · {dateTime(activity.adjustedAt)}<br />Motivo: {activity.adjustmentReason}</p> : null}
     <form action={submitSave} className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
       <input type="hidden" name="activityId" value={activity.id} /><input type="hidden" name="expectedRevision" value={activity.adjustmentRevision ?? "0"} /><input type="hidden" name="requestId" value={activity.adjustmentRequestId} />
-      <fieldset><legend className="text-xs font-bold text-slate-700">Horas efetivas</legend><label className="mr-3 text-xs"><input type="radio" name="hoursMode" value="present" defaultChecked={effectiveHoursPresent} /> Informadas</label><label className="text-xs"><input type="radio" name="hoursMode" value="missing" defaultChecked={!effectiveHoursPresent} /> Ausentes</label><input name="hours" defaultValue={effectiveHoursPresent ? activity.hours : ""} placeholder="Ex.: 30:15" className="mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></fieldset>
-      <fieldset><legend className="text-xs font-bold text-slate-700">Medição efetiva</legend><label className="mr-3 text-xs"><input type="radio" name="measurementMode" value="present" defaultChecked={effectiveMeasurementPresent} /> Informada</label><label className="text-xs"><input type="radio" name="measurementMode" value="missing" defaultChecked={!effectiveMeasurementPresent} /> Ausente</label><input name="measurement" defaultValue={effectiveMeasurementPresent ? activity.measuredValue : ""} placeholder="Ex.: -125,50" className="mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></fieldset>
+      <fieldset><legend className="text-xs font-bold text-slate-700">Horas efetivas</legend><label className="mr-3 text-xs"><input type="radio" name="hoursMode" value="present" defaultChecked={effectiveHoursPresent} /> Informadas</label><label className="text-xs"><input type="radio" name="hoursMode" value="missing" defaultChecked={!effectiveHoursPresent} /> Ausentes</label><input name="hours" defaultValue={effectiveHoursPresent ? (activity.durationSeconds !== undefined ? durationSecondsToInput(activity.durationSeconds) : activity.hours) : ""} placeholder="Ex.: 30:15:01" className="mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></fieldset>
+      <fieldset><legend className="text-xs font-bold text-slate-700">Medição efetiva</legend><label className="mr-3 text-xs"><input type="radio" name="measurementMode" value="present" defaultChecked={effectiveMeasurementPresent} /> Informada</label><label className="text-xs"><input type="radio" name="measurementMode" value="missing" defaultChecked={!effectiveMeasurementPresent} /> Ausente</label><input name="measurement" defaultValue={effectiveMeasurementPresent ? (activity.measuredValueDecimal ?? activity.measuredValue) : ""} placeholder="Ex.: -125,1234567890123456" className="mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></fieldset>
       <label className="text-xs font-bold text-slate-700 sm:col-span-2">Motivo do ajuste<input name="reason" minLength={3} maxLength={500} required className="mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal" /></label>
       <button disabled={savePending} className="h-10 rounded-lg bg-[var(--brand)] px-4 text-sm font-bold text-white disabled:opacity-60 sm:col-span-2 sm:justify-self-end">{savePending ? "Salvando…" : "Salvar ajuste"}</button>
       <div className="sm:col-span-2"><ActionFeedback state={saveState} /></div>

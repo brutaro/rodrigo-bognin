@@ -38,6 +38,13 @@ try {
     });
     console.log(`migration ${name}: applied`);
   }
+  const namespace = process.env.TRIA_INSTANCE_NAMESPACE;
+  if (namespace) {
+    if (!/^[a-z0-9][a-z0-9_-]{2,100}$/.test(namespace)) throw new Error("Namespace da instância inválido.");
+    const [marker] = await sql`SELECT namespace FROM runtime_instance_marker WHERE singleton`;
+    if (marker && marker.namespace !== namespace) throw new Error("Banco pertence a outra instância.");
+    if (!marker) await sql`INSERT INTO runtime_instance_marker (singleton, namespace) VALUES (true, ${namespace})`;
+  }
 } finally {
   await sql`SELECT pg_advisory_unlock(7824001)`.catch(() => undefined);
   await sql.end();

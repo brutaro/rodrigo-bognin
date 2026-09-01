@@ -3,6 +3,7 @@ import "server-only";
 import path from "node:path";
 import { Document, Font, Page, StyleSheet, Text, View } from "@react-pdf/renderer";
 import type { ChartDatum, GlobalReportModel, ProjectReportModel } from "./types";
+import { chartBarWidth, ReportLimitExceededError } from "./limits";
 
 Font.register({ family: "Noto Sans", fonts: [
   { src: path.join(process.cwd(), "public/report-fonts/noto-sans-latin-400-normal.woff"), fontWeight: 400 },
@@ -26,14 +27,43 @@ const s = StyleSheet.create({
 
 function Header({ title }: { title: string }) { return <Text fixed style={s.header}>TRIA · Relatório gerencial privado · {title}</Text>; }
 function Footer({ code, hash }: { code: string; hash: string }) { return <View fixed style={s.footer}><Text>{code} · Modelo {hash}</Text><Text render={({ pageNumber, totalPages }) => `Página ${pageNumber} de ${totalPages}`} /></View>; }
-function Table({ headers, rows, widths }: { headers: string[]; rows: string[][]; widths?: number[] }) {
-  return <View style={s.table}><View style={[s.row, s.head]}>{headers.map((header, index) => <Text key={header} style={[s.cell, widths ? { flexGrow: widths[index], flexBasis: 0 } : {}]}>{header}</Text>)}</View>{rows.map((row, rowIndex) => <View key={`${rowIndex}-${row[0]}`} style={s.row}>{row.map((cell, index) => <Text key={index} style={[s.cell, widths ? { flexGrow: widths[index], flexBasis: 0 } : {}]}>{cell}</Text>)}</View>)}</View>;
+function tableChunks(rows: string[][]) {
+  const source = rows.length ? rows : [["Nenhum registro."]]; const chunks: string[][][] = []; let chunk: string[][] = []; let lineBudget = 1;
+  for (const row of source) {
+    const rowLines = Math.max(1, ...row.map((cell) => cell.split("\n").reduce((total, part) => total + Math.max(1, Math.ceil(part.length / 42)), 0)));
+    if (rowLines > 22) throw new ReportLimitExceededError("Uma linha do relatório é maior que a página.");
+    if (chunk.length && lineBudget + rowLines > 22) { chunks.push(chunk); chunk = []; lineBudget = 1; }
+    chunk.push(row); lineBudget += rowLines;
+  }
+  if (chunk.length) chunks.push(chunk); return chunks;
+}
+function Table({ headers, rows, widths, title }: { headers: string[]; rows: string[][]; widths?: number[]; title?: string }) {
+  return <>{tableChunks(rows).map((chunk, chunkIndex) => <View key={chunkIndex} wrap={false}>
+    {title && chunkIndex === 0 ? <Text style={s.h2}>{title}</Text> : null}
+    <View style={s.table} wrap={false}>
+      <View style={[s.row, s.head]} wrap={false}>{headers.map((header, index) => <Text key={header} style={[s.cell, widths ? { flexGrow: widths[index], flexBasis: 0 } : {}]}>{header}</Text>)}</View>
+      {chunk.map((row, rowIndex) => <View key={`${rowIndex}-${row[0]}`} style={s.row} wrap={false}>{row.map((cell, index) => <Text key={index} style={[s.cell, widths ? { flexGrow: widths[index], flexBasis: 0 } : {}]}>{cell}</Text>)}</View>)}
+    </View>
+  </View>)}</>;
+}
+function chartChunks(data: ChartDatum[], size = 14) {
+  if (!data.length) return [[]] as ChartDatum[][];
+  return Array.from({ length: Math.ceil(data.length / size) }, (_, index) => data.slice(index * size, (index + 1) * size));
 }
 function ChartWithTable({ title, data }: { title: string; data: ChartDatum[] }) {
   const maximum = Math.max(1, ...data.map((item) => Math.abs(item.value)));
-  return <View><Text style={s.h2}>{title}</Text><View aria-label={`Gráfico: ${title}`}>{data.map((item) => <View key={item.label} style={s.chartRow} wrap={false}><Text style={s.chartLabel}>{item.label}</Text><View style={s.chartTrack}><View style={[s.chartBar, { width: `${Math.max(1, Math.abs(item.value) / maximum * 100)}%` }]} /></View><Text style={s.chartValue}>{item.displayValue}</Text></View>)}</View><Text style={s.h3}>Tabela equivalente ao gráfico</Text><Table headers={["Categoria", "Valor"]} rows={data.map((item) => [item.label, item.displayValue])} widths={[2, 1]} /></View>;
+  return <>{chartChunks(data).map((chunk, chunkIndex) => <View key={`${title}-${chunkIndex}`} wrap={false} minPresenceAhead={180}>
+    <Text style={s.h2}>{title}{chunkIndex ? " — continuação" : ""}</Text>
+    <View aria-label={`Gráfico: ${title}`}>{chunk.length ? chunk.map((item) => <View key={item.label} style={s.chartRow} wrap={false}><Text style={s.chartLabel}>{item.label}</Text><View style={s.chartTrack}><View style={[s.chartBar, { width: chartBarWidth(item.value, maximum) }]} /></View><Text style={s.chartValue}>{item.displayValue}</Text></View>) : <Text style={s.muted}>Nenhum dado disponível.</Text>}</View>
+    <Text style={s.h3}>Tabela equivalente ao gráfico</Text>
+    <Table headers={["Categoria", "Valor"]} rows={chunk.map((item) => [item.label, item.displayValue])} widths={[2, 1]} />
+  </View>)}</>;
 }
-function Intro({ code, generatedAt, hash }: { code: string; generatedAt: string; hash: string }) { return <View><Text style={s.muted}>Gerado em {generatedAt}</Text><Text style={s.hash}>Código {code}</Text><Text style={s.hash}>Hash do modelo {hash}</Text></View>; }
+function readableDateTime(value: string) {
+  const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) return "Não informado";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Sao_Paulo" }).format(parsed);
+}
+function Intro({ code, generatedAt, hash }: { code: string; generatedAt: string; hash: string }) { return <View wrap={false}><Text style={s.muted}>Gerado em {readableDateTime(generatedAt)}</Text><Text style={s.hash}>Código {code}</Text><Text style={s.hash}>Hash do modelo {hash}</Text></View>; }
 
 export function ProjectReportDocument({ model }: { model: ProjectReportModel }) {
   return <Document title={`Relatório gerencial — ${model.project.title}`} author="TRIA" subject="Relatório privado com valores efetivos e auditoria">
@@ -45,7 +75,7 @@ export function ProjectReportDocument({ model }: { model: ProjectReportModel }) 
       <ChartWithTable title="Horas efetivas por BM" data={model.hoursByBm} />
       <Text style={s.h2}>Atividades: original e efetivo</Text><Table headers={["Atividade", "BM", "Horas origem / efetivo", "Medição origem / efetivo", "Proveniência"]} rows={model.activities.map((item) => [`${item.description}\n${item.id}`, item.bm, `${item.sourceHours}\n${item.effectiveHours}`, `${item.sourceMeasurement}\n${item.effectiveMeasurement}`, `R${item.revision} · ${item.provenance}`])} widths={[2.2, .7, 1.1, 1.2, 1.8]} />
       <Text style={s.h2}>Evidências</Text><Text style={s.muted}>Somente metadados. Nenhum upload foi renderizado.</Text><Table headers={["Código", "Tipo", "Situação"]} rows={model.evidence.map((item) => [item.code, item.type, item.status])} widths={[1, 2, 2]} />
-      <Text style={s.h2}>Histórico de ajustes</Text>{model.history.length ? model.history.map((item, index) => <View key={`${item.kind}-${item.record}-${item.revision}-${index}`} style={s.history}><Text style={{ fontWeight: 700 }}>{item.kind} · {item.record} · revisão {item.revision} · {item.operation}</Text><Text>{item.actor} · {item.occurredAt}</Text><Text>Motivo: {item.reason}</Text><Text>Antes: {item.before}</Text><Text>Depois: {item.after}</Text></View>) : <Text>Nenhum ajuste registrado.</Text>}
+      <Text style={s.h2}>Histórico de ajustes</Text>{model.history.length ? model.history.map((item, index) => <View key={`${item.kind}-${item.record}-${item.revision}-${index}`} style={s.history} wrap={false}><Text style={{ fontWeight: 700 }}>{item.kind} · {item.record} · revisão {item.revision} · {item.operation === "restore" ? "restauração" : "ajuste"}</Text><Text>{item.actor} · {item.occurredAt}</Text><Text>Motivo: {item.reason}</Text><Text>Antes: {item.before}</Text><Text>Depois: {item.after}</Text></View>) : <Text>Nenhum ajuste registrado.</Text>}
     </Page>
   </Document>;
 }
@@ -57,6 +87,6 @@ export function GlobalReportDocument({ model }: { model: GlobalReportModel }) {
     <Text style={s.h2}>Cobertura</Text><View style={s.metrics}>{model.coverage.map((item) => <View key={item.label} style={s.metric}><Text style={{ fontWeight: 700 }}>{item.label}</Text><Text>{item.value}</Text></View>)}</View>
     <ChartWithTable title="Status do portfólio" data={model.statuses} /><ChartWithTable title="Tendência temporal de horas" data={model.trend} />
     <Text style={s.h2}>Universos financeiros separados</Text><Table headers={["Universo", "Valor", "Regra"]} rows={model.financialUniverses.map((item) => [item.name, item.value, item.explanation])} widths={[1.3, 1, 2.2]} />
-    <Text style={s.h2}>Portfólio</Text><Table headers={["Projeto", "Status", "Ativ.", "Horas", "Medição", "NFS-e", "Relacionado", "Pagamentos"]} rows={model.portfolio.map((item) => [item.title, item.status, item.activities, item.effectiveHours, item.measurement, item.invoiced, item.related, item.payments])} widths={[2.2, 1, .45, .8, 1, 1, 1, 1]} />
+    <Table title="Portfólio" headers={["Projeto", "Status", "Atividades", "Horas", "Medição"]} rows={model.portfolio.map((item) => [item.title, item.status, item.activities, item.effectiveHours, item.measurement])} widths={[2.8, 1.6, .75, 1, 1.35]} />
   </Page></Document>;
 }

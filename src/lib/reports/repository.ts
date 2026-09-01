@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { getSql, isDatabaseConfigured } from "../database";
 import { formatBrlDecimal, formatDuration } from "../project-repository";
 import type { GlobalReportModel, ProjectReportModel } from "./types";
+import { assertReportCell, enforceReportModelSize, enforceReportRows, fillMonthlyTrend, REPORT_QUERY_LIMIT, REPORT_STATEMENT_TIMEOUT_MS } from "./limits";
 
 export class ReportNotFoundError extends Error {}
 export class ReportUnavailableError extends Error {}
@@ -19,7 +20,31 @@ function period(start: string | null, end: string | null) { return `${date(start
 function provenance(row: { adjusted_by: string | null; adjusted_at: string | null; adjustment_reason: string | null }) {
   return row.adjusted_by ? `${row.adjusted_by} · ${row.adjusted_at ?? "sem horário"} · ${row.adjustment_reason ?? "sem motivo"}` : "Auditoria importada";
 }
-function safeJson(value: unknown) { return JSON.stringify(value).replace(/[\u0000-\u001f]/g, " ").slice(0, 1500); }
+function state(value: unknown) { return value && typeof value === "object" ? value as Record<string, unknown> : {}; }
+function valueText(value: unknown, fallback = "Não informado") { return value === null || value === undefined || value === "" ? fallback : String(value); }
+function reportDate(value: unknown) { const text = valueText(value, ""); return /^\d{4}-\d{2}-\d{2}/.test(text) ? `${text.slice(8, 10)}/${text.slice(5, 7)}/${text.slice(0, 4)}` : "Não informada"; }
+function reportDateTime(value: string | null) {
+  if (!value) return "Não informado";
+  const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) return "Não informado";
+  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "medium", timeZone: "America/Sao_Paulo" }).format(parsed);
+}
+function projectLabel(value: unknown, labels: Map<string, string>) { const id = valueText(value, ""); return id ? labels.get(id) ?? "Outro projeto" : "Não informado"; }
+function activityStateText(value: unknown) {
+  const item = state(value); const duration = item.durationSeconds === null || item.durationSeconds === undefined ? null : String(item.durationSeconds);
+  const measured = item.measuredValue === null || item.measuredValue === undefined ? null : String(item.measuredValue);
+  return `Horas: ${formatDuration(duration)}; medição: ${formatBrlDecimal(measured)}`;
+}
+function fiscalStateText(value: unknown, labels: Map<string, string>) {
+  const item = state(value); const eligible = item.fullValueEligible === true ? "Sim" : item.fullValueEligible === false ? "Não" : "Não informada";
+  const amount = item.amount === null || item.amount === undefined ? null : String(item.amount);
+  const related = item.verifiedRelatedValue === null || item.verifiedRelatedValue === undefined ? null : String(item.verifiedRelatedValue);
+  const duplicates = Array.isArray(item.detectedDuplicateFiscalNoteIds) && item.detectedDuplicateFiscalNoteIds.length ? "Sim" : "Não";
+  return `NFS-e: ${valueText(item.number ?? item.noteNumber)}; emissão: ${reportDate(item.issueDate)}; valor: ${formatBrlDecimal(amount)}; ` +
+    `categoria: ${valueText(item.category)}; projeto declarado: ${projectLabel(item.declaredProjectId, labels)}; ` +
+    `projeto candidato: ${projectLabel(item.candidateProjectId, labels)}; relação: ${valueText(item.strength)}; ` +
+    `situação: ${valueText(item.relationState)}; critério: ${valueText(item.criterion)}; elegibilidade integral: ${eligible}; ` +
+    `valor relacionado: ${formatBrlDecimal(related)}; duplicidade detectada: ${duplicates}`;
+}
 function numberFromSeconds(seconds: string) { const value = Number(seconds) / 3600; return Number.isFinite(value) ? value : 0; }
 function formatCents(cents: string | null) {
   if (cents === null) return "Não informado";
@@ -33,6 +58,7 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
   try {
     const sql = getSql();
     const data = await sql.begin("read only isolation level repeatable read", async (tx) => {
+      await tx`SELECT set_config('statement_timeout', ${String(REPORT_STATEMENT_TIMEOUT_MS)}, true)`;
       const [project] = await tx<{ id: string; title: string; date_start: string | null; date_end: string | null; narrative: string; generated_at: string }[]>`
         SELECT p.id, p.title, p.date_start::text, p.date_end::text, coalesce(d.narrative, '') narrative,
           transaction_timestamp()::text generated_at FROM project p LEFT JOIN project_draft d ON d.project_id = p.id WHERE p.id = ${projectId}`;
@@ -43,10 +69,10 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
         SELECT id, activity description, functionality, bm_code, source_duration_seconds::text, effective_duration_seconds::text,
           source_measured_value::text, effective_measured_value::text, adjustment_revision::text,
           adjusted_by, adjusted_at::text, adjustment_reason
-        FROM effective_bm_activity WHERE project_id = ${projectId} ORDER BY activity_date NULLS LAST, id`;
+        FROM effective_bm_activity WHERE project_id = ${projectId} ORDER BY activity_date NULLS LAST, id LIMIT ${REPORT_QUERY_LIMIT}`;
       const hours = await tx<{ bm_code: string; seconds: string }[]>`
         SELECT bm_code, coalesce(sum(effective_duration_seconds), 0)::text seconds FROM effective_bm_activity
-        WHERE project_id = ${projectId} GROUP BY bm_code ORDER BY bm_code`;
+        WHERE project_id = ${projectId} GROUP BY bm_code ORDER BY bm_code LIMIT ${REPORT_QUERY_LIMIT}`;
       const [financial] = await tx<{ measurement: string | null; invoiced: string | null; related: string | null; payments: string | null; manual_cost: string | null; manual_invoice: string | null; reported: string | null }[]>`
         SELECT
           (SELECT sum(effective_measured_value)::text FROM effective_bm_activity WHERE project_id = ${projectId}) measurement,
@@ -58,30 +84,33 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE project_id = ${projectId} AND kind = 'Valor informado') reported`;
       const evidence = await tx<{ id: string; file_type: string | null; status: string }[]>`
         SELECT e.id, e.file_type, pe.status FROM project_evidence pe JOIN evidence_asset e ON e.id = pe.evidence_asset_id
-        WHERE pe.project_id = ${projectId} ORDER BY e.id`;
-      const activityHistory = await tx<{ activity_id: string; revision: string; operation: string; reason: string; actor: string; created_at: string; before_state: unknown; duration_seconds: string | null; measured_value: string | null }[]>`
-        SELECT h.activity_id, h.revision::text, h.operation, h.reason, h.actor, h.created_at::text,
+        WHERE pe.project_id = ${projectId} ORDER BY e.id LIMIT ${REPORT_QUERY_LIMIT}`;
+      const activityHistory = await tx<{ activity_id: string; record_label: string; revision: string; operation: string; reason: string; actor: string; created_at: string; before_state: unknown; duration_seconds: string | null; measured_value: string | null }[]>`
+        SELECT h.activity_id, coalesce(a.activity, a.functionality, 'Atividade registrada') record_label,
+          h.revision::text, h.operation, h.reason, h.actor, h.created_at::text,
           h.before_state, h.duration_seconds::text, h.measured_value::text
         FROM owner_activity_adjustment_history h JOIN bm_activity a ON a.id = h.activity_id
-        WHERE a.project_id = ${projectId} ORDER BY h.created_at DESC, h.revision DESC`;
+        WHERE a.project_id = ${projectId} ORDER BY h.created_at DESC, h.revision DESC LIMIT ${REPORT_QUERY_LIMIT}`;
       const fiscalHistory = await tx<{ fiscal_note_id: string; revision: string; operation: string; reason: string; actor: string; created_at: string; before_state: unknown;
         issue_year: number; note_number: string; issue_date: string; amount: string; category: string | null; declared_project_id: string | null;
         candidate_project_id: string | null; strength: string; relation_state: string; criterion: string | null;
-        full_value_eligible: boolean | null; verified_related_value: string | null }[]>`
+        full_value_eligible: boolean | null; verified_related_value: string | null; detected_duplicate_fiscal_note_ids: string[] }[]>`
         SELECT h.fiscal_note_id, h.revision::text, h.operation, h.reason, h.actor, h.created_at::text,
           h.before_state, h.issue_year, h.note_number, h.issue_date::text, h.amount::text, h.category,
           h.declared_project_id, h.candidate_project_id, h.strength, h.relation_state, h.criterion,
-          h.full_value_eligible, h.verified_related_value::text
+          h.full_value_eligible, h.verified_related_value::text, h.detected_duplicate_fiscal_note_ids
         FROM owner_fiscal_note_adjustment_history h
         WHERE h.declared_project_id = ${projectId} OR h.candidate_project_id = ${projectId}
           OR h.before_state->>'declaredProjectId' = ${projectId} OR h.before_state->>'candidateProjectId' = ${projectId}
-        ORDER BY h.created_at DESC, h.revision DESC`;
-      return { project, activities, hours, financial, evidence, activityHistory, fiscalHistory };
+        ORDER BY h.created_at DESC, h.revision DESC LIMIT ${REPORT_QUERY_LIMIT}`;
+      const projectLabels = await tx<{ id: string; title: string }[]>`SELECT id, title FROM project ORDER BY id LIMIT ${REPORT_QUERY_LIMIT}`;
+      enforceReportRows([activities, hours, evidence, activityHistory, fiscalHistory, projectLabels]);
+      return { project, activities, hours, financial, evidence, activityHistory, fiscalHistory, projectLabels };
     });
     const draft = {
       kind: "project" as const,
       project: { id: data.project.id, title: data.project.title, period: period(data.project.date_start, data.project.date_end), narrative: data.project.narrative },
-      activities: data.activities.map((row) => ({ id: row.id, description: row.description || row.functionality || "Atividade registrada", bm: row.bm_code,
+      activities: data.activities.map((row) => ({ id: row.id, description: assertReportCell(row.description || row.functionality || "Atividade registrada"), bm: row.bm_code,
         sourceHours: formatDuration(row.source_duration_seconds), effectiveHours: formatDuration(row.effective_duration_seconds),
         sourceMeasurement: formatBrlDecimal(row.source_measured_value), effectiveMeasurement: formatBrlDecimal(row.effective_measured_value),
         revision: row.adjustment_revision, provenance: provenance(row) })),
@@ -96,14 +125,26 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
         { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Valor informado por Rodrigo." },
       ],
       evidence: data.evidence.map((row, index) => ({ code: `EVD-${String(index + 1).padStart(3, "0")}`, type: row.file_type ?? "Arquivo", status: row.status })),
-      history: [
-        ...data.activityHistory.map((row) => ({ kind: "Atividade", record: row.activity_id, revision: row.revision, operation: row.operation, reason: row.reason, actor: row.actor, occurredAt: row.created_at, before: safeJson(row.before_state), after: safeJson({ durationSeconds: row.duration_seconds, measuredValue: row.measured_value }) })),
-        ...data.fiscalHistory.map((row) => ({ kind: "NFS-e", record: row.fiscal_note_id, revision: row.revision, operation: row.operation, reason: row.reason, actor: row.actor, occurredAt: row.created_at, before: safeJson(row.before_state), after: safeJson({ issueYear: row.issue_year, number: row.note_number, issueDate: row.issue_date, amount: row.amount,
-          category: row.category, declaredProjectId: row.declared_project_id, candidateProjectId: row.candidate_project_id,
-          strength: row.strength, relationState: row.relation_state, criterion: row.criterion,
-          fullValueEligible: row.full_value_eligible, verifiedRelatedValue: row.verified_related_value }) })),
-      ].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),
+      history: (() => {
+        const labels = new Map(data.projectLabels.map((item) => [item.id, item.title]));
+        return [
+          ...data.activityHistory.map((row) => ({ kind: "Atividade", record: row.record_label, revision: row.revision,
+            operation: row.operation, reason: row.reason, actor: row.actor, occurredAt: reportDateTime(row.created_at),
+            sortAt: row.created_at, before: activityStateText(row.before_state),
+            after: activityStateText({ durationSeconds: row.duration_seconds, measuredValue: row.measured_value }) })),
+          ...data.fiscalHistory.map((row) => ({ kind: "NFS-e", record: row.note_number, revision: row.revision,
+            operation: row.operation, reason: row.reason, actor: row.actor, occurredAt: reportDateTime(row.created_at), sortAt: row.created_at,
+            before: fiscalStateText(row.before_state, labels), after: fiscalStateText({ number: row.note_number,
+              issueDate: row.issue_date, amount: row.amount, category: row.category, declaredProjectId: row.declared_project_id,
+              candidateProjectId: row.candidate_project_id, strength: row.strength, relationState: row.relation_state,
+              criterion: row.criterion, fullValueEligible: row.full_value_eligible, verifiedRelatedValue: row.verified_related_value,
+              detectedDuplicateFiscalNoteIds: row.detected_duplicate_fiscal_note_ids }, labels) })),
+        ].sort((a, b) => b.sortAt.localeCompare(a.sortAt)).map((entry) => ({ kind: entry.kind, record: entry.record,
+          revision: entry.revision, operation: entry.operation, reason: entry.reason, actor: entry.actor,
+          occurredAt: entry.occurredAt, before: entry.before, after: entry.after }));
+      })(),
     };
+    enforceReportModelSize(draft);
     const modelHash = hashModel(draft);
     return { ...draft, meta: { code: `TRIA-PROJ-${modelHash.slice(0, 12).toUpperCase()}`, generatedAt: data.project.generated_at, modelHash } };
   } catch (error) {
@@ -116,6 +157,7 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
   if (!isDatabaseConfigured()) throw new ReportUnavailableError();
   try {
     const data = await getSql().begin("read only isolation level repeatable read", async (tx) => {
+      await tx`SELECT set_config('statement_timeout', ${String(REPORT_STATEMENT_TIMEOUT_MS)}, true)`;
       const [meta] = await tx<{ generated_at: string; projects: string; activities: string; notes: string; evidence: string; adjusted: string }[]>`
         SELECT transaction_timestamp()::text generated_at, (SELECT count(*)::text FROM project) projects,
           (SELECT count(*)::text FROM effective_bm_activity) activities, (SELECT count(*)::text FROM effective_fiscal_note) notes,
@@ -127,10 +169,10 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
             THEN 'Publicado com alterações pendentes'
           WHEN EXISTS (SELECT 1 FROM publication pub WHERE pub.project_id = p.id) THEN 'Publicado'
           WHEN coalesce(d.revision, 0) > 0 THEN 'Pronto para revisar' ELSE 'Em trabalho' END status, count(*)::text
-        FROM project p LEFT JOIN project_draft d ON d.project_id = p.id GROUP BY status ORDER BY status`;
+        FROM project p LEFT JOIN project_draft d ON d.project_id = p.id GROUP BY status ORDER BY status LIMIT ${REPORT_QUERY_LIMIT}`;
       const trend = await tx<{ month_label: string; seconds: string }[]>`
         SELECT to_char(date_trunc('month', activity_date), 'YYYY-MM') month_label, coalesce(sum(effective_duration_seconds), 0)::text seconds
-        FROM effective_bm_activity WHERE activity_date IS NOT NULL GROUP BY date_trunc('month', activity_date) ORDER BY date_trunc('month', activity_date)`;
+        FROM effective_bm_activity WHERE activity_date IS NOT NULL GROUP BY date_trunc('month', activity_date) ORDER BY date_trunc('month', activity_date) LIMIT ${REPORT_QUERY_LIMIT}`;
       const portfolio = await tx<{ id: string; title: string; status: string; activities: string; seconds: string; measurement: string | null; invoiced: string | null; related: string | null; payments: string | null }[]>`
         SELECT p.id, p.title,
           CASE WHEN EXISTS (SELECT 1 FROM publication pub WHERE pub.project_id = p.id)
@@ -144,7 +186,7 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
           (SELECT sum(amount)::text FROM effective_fiscal_note n WHERE n.declared_project_id = p.id) invoiced,
           (SELECT sum(verified_related_value)::text FROM effective_fiscal_note n WHERE n.candidate_project_id = p.id) related,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry m WHERE m.project_id = p.id AND m.kind = 'Pagamento') payments
-        FROM project p LEFT JOIN project_draft d ON d.project_id = p.id ORDER BY p.title`;
+        FROM project p LEFT JOIN project_draft d ON d.project_id = p.id ORDER BY p.title LIMIT ${REPORT_QUERY_LIMIT}`;
       const [financial] = await tx<{ measurement: string | null; invoiced: string | null; related: string | null; payments: string | null; manual_cost: string | null; manual_invoice: string | null; reported: string | null }[]>`
         SELECT (SELECT sum(effective_measured_value)::text FROM effective_bm_activity) measurement,
           (SELECT sum(amount)::text FROM effective_fiscal_note) invoiced,
@@ -153,13 +195,14 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Custo ou valor do projeto') manual_cost,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Nota ou cobrança') manual_invoice,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Valor informado') reported`;
+      enforceReportRows([statuses, trend, portfolio]);
       return { meta, statuses, trend, portfolio, financial };
     });
     const draft = { kind: "global" as const,
       coverage: [{ label: "Projetos", value: data.meta.projects }, { label: "Atividades", value: data.meta.activities }, { label: "NFS-e", value: data.meta.notes }, { label: "Evidências", value: data.meta.evidence }, { label: "Revisões de ajuste", value: data.meta.adjusted }],
       statuses: data.statuses.map((row) => ({ label: row.status, value: Number(row.count), displayValue: row.count })),
-      trend: data.trend.map((row) => ({ label: row.month_label, value: numberFromSeconds(row.seconds), displayValue: formatDuration(row.seconds) })),
-      portfolio: data.portfolio.map((row) => ({ id: row.id, title: row.title, status: row.status, activities: row.activities,
+      trend: fillMonthlyTrend(data.trend).map((row) => ({ label: row.month_label, value: numberFromSeconds(row.seconds), displayValue: formatDuration(row.seconds) })),
+      portfolio: data.portfolio.map((row) => ({ id: row.id, title: assertReportCell(row.title), status: row.status, activities: row.activities,
         effectiveHours: formatDuration(row.seconds), measurement: formatBrlDecimal(row.measurement), invoiced: formatBrlDecimal(row.invoiced),
         related: formatBrlDecimal(row.related), payments: formatCents(row.payments) })),
       financialUniverses: [
@@ -171,6 +214,7 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
         { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Soma somente dos valores informados por Rodrigo." },
         { name: "Pagamentos", value: formatCents(data.financial.payments), explanation: "Soma somente dos pagamentos manuais informados." },
       ] };
+    enforceReportModelSize(draft);
     const modelHash = hashModel(draft);
     return { ...draft, meta: { code: `TRIA-GLOBAL-${modelHash.slice(0, 12).toUpperCase()}`, generatedAt: data.meta.generated_at, modelHash } };
   } catch { throw new ReportUnavailableError(); }

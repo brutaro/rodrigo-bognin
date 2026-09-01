@@ -60,6 +60,7 @@ services:
       PGDATABASE: tria
       PGUSER: tria_migrator
       PGPASSWORD_FILE: /run/secrets/db_migrator_password
+      TRIA_INSTANCE_NAMESPACE: ${COMPOSE_PROJECT_NAME:-tria-plano-b}
       npm_config_cache: /tmp/npm
     secrets:
       - db_migrator_password
@@ -120,6 +121,7 @@ services:
       PGPASSWORD_FILE: /run/secrets/db_app_password
       TRIA_FILE_STORE_PATH: /data/files
       TRIA_FILE_STORE_UUID_FILE: /run/secrets/file_store_uuid
+      TRIA_INSTANCE_NAMESPACE: ${COMPOSE_PROJECT_NAME:-tria-plano-b}
     secrets:
       - db_app_password
       - file_store_uuid
@@ -154,6 +156,7 @@ services:
       APP_BASE_URL: http://app:3000
       TRIA_INTEGRATION_ISOLATED: ${TRIA_INTEGRATION_ISOLATED:-disabled}
       TRIA_INTEGRATION_NAMESPACE: ${COMPOSE_PROJECT_NAME:-tria-plano-b}
+      TRIA_INSTANCE_NAMESPACE: ${COMPOSE_PROJECT_NAME:-tria-plano-b}
     secrets:
       - db_app_password
       - db_admin_password

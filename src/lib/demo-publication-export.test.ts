@@ -148,6 +148,8 @@ describe("renderizador v3", () => {
     expect(buildPublicationHtml(publication)).toContain(literal);
     expect(buildPublicationCsv(publication)).toContain(literal);
     expect(buildPublicationHtml(publication)).toContain("tria-export-v3");
+    const bytesHash = createHash("sha256").update(buildPublicationHtml(publication)).update("\0").update(buildPublicationCsv(publication)).digest("hex");
+    expect(bytesHash).toBe("070b915085541b1fcd0eeb98ba1b9bc5a7cd034ab9b65aca2cda96b81450992e");
   });
 });
 
@@ -170,4 +172,20 @@ describe("exportação V4", () => {
     expect(csv).toContain("'​=1+1");
     expect(view.schemaVersion).toBe("tria-publication-v4");
   });
+  it.each([
+    "/Users/alice/Pasta privada/SEGREDOLOCAL",
+    "C:\\Users\\alice\\Pasta privada\\SEGREDOLOCAL",
+    "C:/Users/alice/Pasta privada/SEGREDOLOCAL",
+    "file:///C:/Users/alice/Pasta privada/SEGREDOLOCAL",
+    "\\\\servidor\\compartilhamento\\Pasta privada\\SEGREDOLOCAL",
+    "file:///tmp/Pasta privada/SEGREDOLOCAL",
+  ])("omite caminho local sem extensão e com espaços: %s", (localPath) => {
+    const effective = structuredClone(project); effective.activities[0].description = `Canário ${localPath}; fim`;
+    const snapshot = buildPublicationSnapshotV4(effective, { narrative: `Canário ${localPath}; fim`, manualFinancialEntries: [], history: [], updatedAt: null },
+      4, null, "2026-09-01T11:00:00.000Z");
+    const html = buildPublicationHtml(snapshot); const csv = buildPublicationCsv(snapshot);
+    expect(html).toContain("[caminho local omitido]"); expect(csv).toContain("[caminho local omitido]");
+    expect(html).not.toContain("SEGREDOLOCAL"); expect(csv).not.toContain("SEGREDOLOCAL");
+  });
+
 });

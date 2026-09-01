@@ -73,6 +73,8 @@ context:
 - 2026-09-01 — Implementação concluída para revisão: ajustes append-only de atividades e NFS-e, publicação efetiva V4, editores responsivos e relatórios PDF privados por projeto e global.
 - 2026-09-01 — Revisão adversarial corrigiu retry simultâneo, comparação de conflito fiscal, estados restaurados, sanitização/allowlist V4, paginação longa e verificação semântica dos PDFs.
 
+- 2026-09-01 — Inspeção visual real eliminou sobreposição, meses futuros, títulos órfãos e JSON técnico dos PDFs.
+
 ## Design Notes
 
 A interface distinguirá “Auditoria importada” de “Ajustado por Rodrigo”. Gráficos ficam apenas nos PDFs: horas por BM no projeto; status e tendência temporal no global.
@@ -86,65 +88,58 @@ A interface distinguirá “Auditoria importada” de “Ajustado por Rodrigo”
 - `git diff --check` — diff válido; fontes e BMAD intactos.
 
 
-**Resultados executados:** 95 testes em doze arquivos, lint, TypeScript e build passaram no host e no contêiner de ferramentas. A migração 023 foi aplicada do zero em PostgreSQL 16 isolado. `db:validate` aprovou 59 projetos, 3.364 atividades, 142 NFS-e, ACL, funções e visões efetivas. O smoke `tria-adjustments-*` aprovou idempotência, concorrência, restauração, atomicidade fiscal, confirmação de duplicidade, publicação V4, PDFs autenticados, cofre e falhas fechadas. PDFs de projeto e global foram gerados no contêiner standalone, tinham duas páginas, texto extraível e SHA-256 coincidente com o cabeçalho. Banco indisponível retornou 503. `npm audit --omit=dev --audit-level=high` encontrou zero vulnerabilidades.
+**Resultados executados:** 108 testes em 14 arquivos, lint, TypeScript e build passaram no host. As migrações 001–024 foram aplicadas do zero e em upgrade sobre 001–023 no PostgreSQL 16. `db:validate` aprovou 59 projetos, 3.364 atividades, 142 NFS-e, 72 vínculos, ACL, funções, visões efetivas e marcadores de isolamento. O smoke Docker independente aprovou autenticação, cofre, precisão, idempotência concorrente, conflito, restauração, domínio fiscal, action real, publicação V4, PDFs, backup, corrupção e expurgo. Os PDFs autenticados foram renderizados e inspecionados página a página: projeto e global sem sobreposição, título órfão, JSON técnico ou universos financeiros misturados. `npm audit --omit=dev --audit-level=high` encontrou zero vulnerabilidades; `git diff --check` passou.
 
 ## Suggested Review Order
 
 **Modelo auditável e consistência**
 
-- Comece pelo contrato append-only, visões efetivas, locks, restauração e ACL.
+- Comece pelo contrato append-only, valores efetivos e restauração da fonte.
   [`023_owner_adjustment_revisions.sql:2`](../db/migrations/023_owner_adjustment_revisions.sql#L2)
 
-- O repositório serializa tentativas e converte conflitos sem expor o banco.
+- O endurecimento garante precisão, idempotência concorrente, domínio fiscal e isolamento.
+  [`024_owner_adjustment_hardening.sql:69`](../db/migrations/024_owner_adjustment_hardening.sql#L69)
+
+- O repositório converte conflitos sem conceder DML direto à aplicação.
   [`source-adjustment-repository.ts:37`](../src/lib/source-adjustment-repository.ts#L37)
 
-- Todas as leituras de projeto passam a distinguir fonte e valor efetivo.
-  [`project-repository.ts:108`](../src/lib/project-repository.ts#L108)
-
-**Publicação imutável V4**
-
-- A publicação lê a composição efetiva sob o mesmo lock do projeto.
-  [`workspace.ts:142`](../src/lib/workspace.ts#L142)
-
-- O builder V4 congela conteúdo e proveniência sem tocar V1–V3.
-  [`demo-workspace.ts:548`](../src/lib/demo-workspace.ts#L548)
-
-- O exportador V4 usa allowlist, sanitização e universos financeiros separados.
-  [`demo-publication-export-v4.ts:25`](../src/lib/demo-publication-export-v4.ts#L25)
+- As consultas distinguem origem, efetivo e cadeia completa de revisões.
+  [`project-repository.ts:114`](../src/lib/project-repository.ts#L114)
 
 **Edição do proprietário**
 
-- A tabela de atividades combina desktop, cartões móveis e retorno de foco.
-  [`editable-activity-table.tsx:60`](../src/components/editable-activity-table.tsx#L60)
+- A atividade preserva segundos e precisão decimal em desktop e celular.
+  [`editable-activity-table.tsx:49`](../src/components/editable-activity-table.tsx#L49)
 
-- O editor fiscal mantém declarado e candidato distintos numa revisão atômica.
-  [`editable-fiscal-notes.tsx:56`](../src/components/editable-fiscal-notes.tsx#L56)
+- A NFS-e mantém declaração e relação auditada como fatos distintos.
+  [`editable-fiscal-notes.tsx:37`](../src/components/editable-fiscal-notes.tsx#L37)
 
-- As actions de atividade validam origem, revisão, motivo e valores assinados.
-  [`actions.ts:87`](../src/app/projetos/[id]/actions.ts#L87)
+**Publicação imutável V4**
 
-- As actions fiscais falham fechadas e devolvem conflitos comparáveis.
-  [`notas-fiscais/actions.ts:18`](../src/app/notas-fiscais/actions.ts#L18)
+- A publicação lê a composição efetiva sob o lock do projeto.
+  [`workspace.ts:142`](../src/lib/workspace.ts#L142)
+
+- O exportador V4 redige caminhos e preserva os renderizadores anteriores.
+  [`demo-publication-export-v4.ts:27`](../src/lib/demo-publication-export-v4.ts#L27)
 
 **Relatórios privados**
 
-- O modelo nasce de uma leitura PostgreSQL repeatable-read e não mistura universos.
-  [`reports/repository.ts:30`](../src/lib/reports/repository.ts#L30)
+- A consulta repeatable-read separa universos e preenche apenas lacunas temporais reais.
+  [`repository.ts:156`](../src/lib/reports/repository.ts#L156)
 
-- Os documentos A4 unem gráficos vetoriais, tabelas equivalentes e histórico.
-  [`documents.tsx:38`](../src/lib/reports/documents.tsx#L38)
+- O documento A4 controla chunks, cabeçalhos, gráficos e histórico legível.
+  [`documents.tsx:83`](../src/lib/reports/documents.tsx#L83)
 
-- A rota autentica, bloqueia cache e publica hashes de bytes e modelo.
-  [`route.ts:9`](../src/app/api/reports/projects/[id]/route.ts#L9)
+- Limites explícitos protegem memória, consulta, célula e tamanho final.
+  [`limits.ts:2`](../src/lib/reports/limits.ts#L2)
 
 **Verificação e limites**
 
-- O smoke isolado cobre concorrência, idempotência, V4, PDFs e cofre.
-  [`integration-smoke.mjs:83`](../scripts/integration-smoke.mjs#L83)
+- O smoke comprova concorrência real, action fiscal, V4, PDFs e cofre.
+  [`integration-smoke.mjs:117`](../scripts/integration-smoke.mjs#L117)
 
-- A validação confirma migração, visões seguras, funções e privilégio mínimo.
-  [`validate-database.mjs:6`](../scripts/validate-database.mjs#L6)
+- A validação confirma 24 migrações, ACL e invariantes operacionais.
+  [`validate-database.mjs:74`](../scripts/validate-database.mjs#L74)
 
-- O teste extrai texto e força paginação de linhas longas no PDF.
-  [`report-document.test.tsx:30`](../src/lib/reports/report-document.test.tsx#L30)
-
+- O teste semântico impede regressões de paginação e linguagem técnica.
+  [`report-document.test.tsx:44`](../src/lib/reports/report-document.test.tsx#L44)

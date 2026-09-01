@@ -28,6 +28,10 @@ export type FiscalNoteSummary = {
   };
   adjustmentRevision: string; adjustmentOperation: "adjust" | "restore" | null; adjusted: boolean; adjustmentReason: string | null;
   adjustedBy: string | null; adjustedAt: string | null;
+  adjustmentHistory: Array<{
+    revision: string; operation: "adjust" | "restore"; reason: string; actor: string; adjustedAt: string;
+    before: string; after: string;
+  }>;
 };
 
 export type PublicationSummary = {
@@ -64,7 +68,9 @@ export function formatDuration(seconds: string | null) {
   const total = BigInt(seconds);
   const hours = total / BigInt(3600);
   const minutes = (total % BigInt(3600)) / BigInt(60);
-  return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+  const remainingSeconds = total % BigInt(60);
+  const base = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+  return remainingSeconds === 0n ? base : `${base}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
 function status(publicationCount: number, revision: number, publicationStale = false): ProjectStatus {
@@ -119,7 +125,7 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
     WHERE p.id = ${id} GROUP BY p.id, d.narrative, d.revision, d.updated_at`;
   const row = projects[0];
   if (!row) return undefined;
-  const [activities, notes, evidence] = await Promise.all([
+  const [activities, notes, evidence, activityHistory] = await Promise.all([
     sql<{ id: string; description: string | null; functionality: string | null; bm_code: string;
       source_duration_seconds: string | null; source_measured_value: string; effective_duration_seconds: string | null;
       effective_measured_value: string | null; adjustment_revision: string; adjustment_operation: "adjust" | "restore" | null; adjusted: boolean;
@@ -144,7 +150,23 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
     sql<{ id: string; file_type: string | null; strength: string; status: string }[]>`
       SELECT e.id, e.file_type, pe.strength, pe.status FROM project_evidence pe
       JOIN evidence_asset e ON e.id = pe.evidence_asset_id WHERE pe.project_id = ${id} ORDER BY e.id`,
+    sql<{ activity_id: string; revision: string; operation: "adjust" | "restore"; reason: string; actor: string; created_at: string;
+      before_duration_seconds: string | null; before_measured_value: string | null; duration_seconds: string | null; measured_value: string | null }[]>`
+      SELECT h.activity_id, h.revision::text, h.operation, h.reason, h.actor, h.created_at::text,
+        h.before_state->>'durationSeconds' before_duration_seconds, h.before_state->>'measuredValue' before_measured_value,
+        h.duration_seconds::text, h.measured_value::text
+      FROM owner_activity_adjustment_history h JOIN bm_activity a ON a.id = h.activity_id
+      WHERE a.project_id = ${id} ORDER BY h.activity_id, h.revision`,
   ]);
+  const histories = new Map<string, Project["activities"][number]["adjustmentHistory"]>();
+  for (const entry of activityHistory) {
+    const list = histories.get(entry.activity_id) ?? [];
+    list.push({ revision: entry.revision, operation: entry.operation, reason: entry.reason, actor: entry.actor, adjustedAt: entry.created_at,
+      beforeHours: formatDuration(entry.before_duration_seconds), afterHours: formatDuration(entry.duration_seconds),
+      beforeMeasuredValue: entry.before_measured_value === null ? "Não informado" : `${entry.before_measured_value} (${formatBrlDecimal(entry.before_measured_value)})`,
+      afterMeasuredValue: entry.measured_value === null ? "Não informado" : `${entry.measured_value} (${formatBrlDecimal(entry.measured_value)})` });
+    histories.set(entry.activity_id, list);
+  }
   return {
     id: row.id, name: row.title, period: period(row.date_start, row.date_end),
     periodStart: row.date_start ?? "", periodEnd: row.date_end ?? "",
@@ -153,9 +175,11 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
     activities: activities.map((item) => ({
       id: item.id, description: item.description || item.functionality || "Atividade registrada na fonte", bm: item.bm_code,
       hours: formatDuration(item.effective_duration_seconds), measuredValue: formatBrlDecimal(item.effective_measured_value),
-      sourceHours: formatDuration(item.source_duration_seconds), sourceMeasuredValue: formatBrlDecimal(item.source_measured_value),
+      durationSeconds: item.effective_duration_seconds, measuredValueDecimal: item.effective_measured_value,
+      sourceHours: formatDuration(item.source_duration_seconds), sourceDurationSeconds: item.source_duration_seconds,
+      sourceMeasuredValue: formatBrlDecimal(item.source_measured_value), sourceMeasuredValueDecimal: item.source_measured_value,
       adjustmentRevision: item.adjustment_revision, adjustmentOperation: item.adjustment_operation, adjusted: item.adjusted, adjustmentReason: item.adjustment_reason,
-      adjustedBy: item.adjusted_by, adjustedAt: item.adjusted_at,
+      adjustedBy: item.adjusted_by, adjustedAt: item.adjusted_at, adjustmentHistory: histories.get(item.id) ?? [],
     })),
     financialReferences: notes.map((item) => {
       const auditedForProject = item.candidate_project_id === id;
@@ -179,7 +203,9 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
 
 export async function listFiscalNotes(): Promise<FiscalNoteSummary[]> {
   if (!isDatabaseConfigured()) return [];
-  const rows = await getSql()<{
+  const sql = getSql();
+  const [rows, fiscalHistory] = await Promise.all([
+    sql<{
     id: string; issue_year: number; note_number: string; issue_date: string; amount: string; category: string | null;
     declared_project_id: string | null; declared_title: string | null; candidate_project_id: string | null; candidate_title: string | null;
     strength: string; relation_state: string; criterion: string | null; full_value_eligible: boolean | null; verified_related_value: string | null;
@@ -196,7 +222,47 @@ export async function listFiscalNotes(): Promise<FiscalNoteSummary[]> {
       n.source_criterion, n.source_full_value_eligible, n.source_verified_related_value::text,
       n.adjustment_revision::text, n.adjustment_operation, n.adjusted, n.adjustment_reason, n.adjusted_by, n.adjusted_at::text
     FROM effective_fiscal_note n LEFT JOIN project dp ON dp.id = n.declared_project_id
-    LEFT JOIN project cp ON cp.id = n.candidate_project_id ORDER BY n.issue_date DESC, n.note_number, n.id`;
+    LEFT JOIN project cp ON cp.id = n.candidate_project_id ORDER BY n.issue_date DESC, n.note_number, n.id`,
+    sql<{ fiscal_note_id: string; revision: string; operation: "adjust" | "restore"; reason: string; actor: string; created_at: string;
+      before_issue_year: string | null; before_note_number: string | null; before_issue_date: string | null; before_amount: string | null;
+      before_category: string | null; before_declared: string | null; before_candidate: string | null; before_strength: string | null;
+      before_relation_state: string | null; before_criterion: string | null; before_eligible: string | null; before_related: string | null;
+      issue_year: string; note_number: string; issue_date: string; amount: string; category: string | null; declared_project_id: string | null;
+      candidate_project_id: string | null; strength: string; relation_state: string; criterion: string | null;
+      full_value_eligible: boolean | null; verified_related_value: string | null; detected_duplicate_fiscal_note_ids: string[] }[]>`
+      SELECT fiscal_note_id, revision::text, operation, reason, actor, created_at::text,
+        before_state->>'issueYear' before_issue_year, before_state->>'noteNumber' before_note_number,
+        before_state->>'issueDate' before_issue_date, before_state->>'amount' before_amount,
+        before_state->>'category' before_category, before_state->>'declaredProjectId' before_declared,
+        before_state->>'candidateProjectId' before_candidate, before_state->>'strength' before_strength,
+        before_state->>'relationState' before_relation_state, before_state->>'criterion' before_criterion,
+        before_state->>'fullValueEligible' before_eligible, before_state->>'verifiedRelatedValue' before_related,
+        issue_year::text, note_number, issue_date::text, amount::text, category, declared_project_id, candidate_project_id,
+        strength, relation_state, criterion, full_value_eligible, verified_related_value::text, detected_duplicate_fiscal_note_ids
+      FROM owner_fiscal_note_adjustment_history ORDER BY fiscal_note_id, revision`,
+  ]);
+  const stateSummary = (value: { year: string | null; number: string | null; date: string | null; amount: string | null; category: string | null;
+    declared: string | null; candidate: string | null; strength: string | null; relationState: string | null; criterion: string | null;
+    eligible: string | boolean | null; related: string | null }) =>
+    `Ano ${value.year ?? "—"}; número ${value.number ?? "—"}; emissão ${value.date ?? "—"}; valor ${formatBrlDecimal(value.amount)}; ` +
+    `categoria ${value.category ?? "—"}; declarado ${value.declared ?? "—"}; candidato ${value.candidate ?? "—"}; ` +
+    `relação ${value.strength ?? "—"}/${value.relationState ?? "—"}; critério ${value.criterion ?? "—"}; ` +
+    `integral ${value.eligible === true || value.eligible === "true" ? "sim" : value.eligible === false || value.eligible === "false" ? "não" : "não informado"}; relacionado ${formatBrlDecimal(value.related)}`;
+  const histories = new Map<string, FiscalNoteSummary["adjustmentHistory"]>();
+  for (const entry of fiscalHistory) {
+    const list = histories.get(entry.fiscal_note_id) ?? [];
+    list.push({ revision: entry.revision, operation: entry.operation, reason: entry.reason, actor: entry.actor, adjustedAt: entry.created_at,
+      before: stateSummary({ year: entry.before_issue_year, number: entry.before_note_number, date: entry.before_issue_date,
+        amount: entry.before_amount, category: entry.before_category, declared: entry.before_declared, candidate: entry.before_candidate,
+        strength: entry.before_strength, relationState: entry.before_relation_state, criterion: entry.before_criterion,
+        eligible: entry.before_eligible, related: entry.before_related }),
+      after: stateSummary({ year: entry.issue_year, number: entry.note_number, date: entry.issue_date,
+        amount: entry.amount, category: entry.category, declared: entry.declared_project_id, candidate: entry.candidate_project_id,
+        strength: entry.strength, relationState: entry.relation_state, criterion: entry.criterion,
+        eligible: entry.full_value_eligible, related: entry.verified_related_value }) +
+        (entry.detected_duplicate_fiscal_note_ids.length ? `; duplicatas detectadas ${entry.detected_duplicate_fiscal_note_ids.join(", ")}` : "") });
+    histories.set(entry.fiscal_note_id, list);
+  }
   return rows.map((row) => ({
     id: row.id, year: row.issue_year, number: row.note_number, issueDate: row.issue_date,
     amount: formatBrlDecimal(row.amount), amountDecimal: row.amount,
@@ -218,6 +284,7 @@ export async function listFiscalNotes(): Promise<FiscalNoteSummary[]> {
     },
     adjustmentRevision: row.adjustment_revision, adjustmentOperation: row.adjustment_operation, adjusted: row.adjusted,
     adjustmentReason: row.adjustment_reason, adjustedBy: row.adjusted_by, adjustedAt: row.adjusted_at,
+    adjustmentHistory: histories.get(row.id) ?? [],
   }));
 }
 

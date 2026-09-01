@@ -13,6 +13,17 @@ function dateTime(value: string | null) { return value ? new Intl.DateTimeFormat
 function triState(value: boolean | null) { return value === true ? "yes" : value === false ? "no" : "unknown"; }
 function projectTitle(id: string | null, projects: ProjectOption[]) { return id ? projects.find((item) => item.id === id)?.title ?? id : "Não informado"; }
 
+function FiscalHistory({ note }: { note: Note }) {
+  if (!note.adjustmentHistory.length) return null;
+  return <details className="mt-3 rounded-lg border border-slate-200 p-3 text-xs"><summary className="cursor-pointer font-bold text-slate-800">Cadeia completa antes/depois ({note.adjustmentHistory.length})</summary>
+    <ol className="mt-3 space-y-3">{note.adjustmentHistory.map((item) => <li key={item.revision} className="border-l-2 border-blue-200 pl-3">
+      <strong>Revisão {item.revision} · {item.operation === "restore" ? "restauração" : "ajuste"}</strong>
+      <span className="block"><b>Antes:</b> {item.before}</span><span className="block"><b>Depois:</b> {item.after}</span>
+      <span className="block">{item.actor} · {dateTime(item.adjustedAt)} · Motivo: {item.reason}</span>
+    </li>)}</ol>
+  </details>;
+}
+
 function Feedback({ state }: { state: AdjustmentActionState }) {
   const ref = useRef<HTMLDivElement>(null); useEffect(() => { if (state.status !== "idle") ref.current?.focus(); }, [state.status]);
   if (state.status === "idle") return null;
@@ -28,6 +39,7 @@ function Editor({ note, projects, saveAction, restoreAction }: { note: Note; pro
   const [restoreState, submitRestore, restorePending] = useActionState(restoreAction, initial);
   return <details className="rounded-xl border border-slate-200 bg-white p-3"><summary className="cursor-pointer text-sm font-bold text-[var(--brand)]">Editar linha completa</summary>
     <div className="mt-4 grid gap-3 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-2"><div><strong className="block">Auditoria importada</strong><span>{note.source.year} · {note.source.number} · {note.source.issueDate}</span><span className="block">{note.source.amount} · {note.source.category ?? "Sem categoria"}</span><span className="block">Declarado: {projectTitle(note.source.declaredProjectId, projects)}</span><span className="block">Candidato: {projectTitle(note.source.candidateProjectId, projects)}</span></div><div><strong className="block text-blue-900">{note.adjustmentOperation === "restore" ? "Restaurado para a auditoria importada" : note.adjusted ? "Ajustado por Rodrigo" : "Efetivo sem ajuste"}</strong><span>{note.year} · {note.number} · {note.issueDate}</span><span className="block">{note.amount} · {note.category}</span><span className="block">Declarado: {note.declaredProject ?? "Não informado"}</span><span className="block">Candidato: {note.candidateProject ?? "Não informado"}</span></div></div>
+    <FiscalHistory note={note} />
     {note.adjusted ? <p className="mt-3 text-xs leading-5 text-slate-600">Revisão {note.adjustmentRevision} · {note.adjustedBy} · {dateTime(note.adjustedAt)}<br />Motivo: {note.adjustmentReason}</p> : null}
     <form action={submitSave} className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <input type="hidden" name="fiscalNoteId" value={note.id} /><input type="hidden" name="expectedRevision" value={note.adjustmentRevision} /><input type="hidden" name="requestId" value={note.adjustmentRequestId} />

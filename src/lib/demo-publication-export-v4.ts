@@ -1,17 +1,19 @@
 import type { DemoPublication } from "./demo-workspace";
 
-function sanitizePublicText(value: string | number | null) {
+export function sanitizePublicTextV4(value: string | number | null) {
   const text = String(value ?? "");
-  const root = String.raw`(?:file:\/\/)?(?:\/(?:Users|home)\/[^/\s]+\/|\/(?:tmp|private|Volumes|var(?:\/folders|\/tmp)?|opt|srv|mnt)\/|[A-Za-z]:\\|\\\\[^\\\s]+\\)`;
-  const withExtension = new RegExp(`${root}[^\\r\\n,;]*?\\.[A-Za-z0-9]{1,10}(?=\\s|[),;]|$)`, "gi");
-  const withoutSpaces = new RegExp(`${root}[^\\s<>"]+`, "gi");
-  return text
-    .replace(withExtension, "[caminho local omitido]")
-    .replace(withoutSpaces, "[caminho local omitido]")
+  const patterns = [
+    /(?:file:\/\/)?\/(?:Users|home)\/[^/\s]+\/[^\r\n,;"<>)]*/gi,
+    /(?:file:\/\/)?\/(?:tmp|private|Volumes|var(?:\/folders|\/tmp)?|opt|srv|mnt)\/[^\r\n,;"<>)]*/gi,
+    /(?:file:\/\/\/)?[A-Za-z]:\/[^\r\n,;"<>)]*/gi,
+    /[A-Za-z]:\\[^\r\n,;"<>)]*/g,
+    /\\\\[^\\\s]+\\[^\r\n,;"<>)]*/g,
+  ];
+  return patterns.reduce((result, pattern) => result.replace(pattern, "[caminho local omitido]"), text)
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
 }
 function safeCsvCell(value: string | number | null) {
-  const oneLine = sanitizePublicText(value).replace(/\r?\n/g, " ");
+  const oneLine = sanitizePublicTextV4(value).replace(/\r?\n/g, " ");
   const effective = oneLine.replace(/^[\u0000-\u0020\u00A0\u1680\u2000-\u200B\u2028\u2029\u202F\u205F\u3000\uFEFF]+/, "");
   const protectedValue = /^[=+\-@]/.test(effective) ? `'${oneLine}` : oneLine;
   return `"${protectedValue.replace(/"/g, '""')}"`;
@@ -20,7 +22,7 @@ function safeCsvCell(value: string | number | null) {
 function assertV4(publication: DemoPublication) {
   if (publication.schemaVersion !== "tria-publication-v4" || publication.rendererVersion !== "tria-export-v4") throw new Error("Snapshot incompatível com o renderizador tria-export-v4.");
 }
-function escapeHtml(value: string | number | null) { return sanitizePublicText(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;"); }
+function escapeHtml(value: string | number | null) { return sanitizePublicTextV4(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;"); }
 
 export function toPublicPublicationV4(publication: DemoPublication) {
   assertV4(publication);
@@ -28,38 +30,38 @@ export function toPublicPublicationV4(publication: DemoPublication) {
     publicationCode: `TRIA-V${publication.version}-${publication.contentHash.slice(0, 12).toUpperCase()}`,
     version: publication.version, contentHash: publication.contentHash,
     schemaVersion: publication.schemaVersion, rendererVersion: publication.rendererVersion,
-    dataClassification: publication.dataClassification, title: sanitizePublicText(publication.title),
-    period: sanitizePublicText(publication.period), cutoff: structuredClone(publication.cutoff),
-    narrative: sanitizePublicText(publication.narrative), publishedAt: publication.createdAt,
-    provenance: sanitizePublicText(publication.createdBy),
+    dataClassification: publication.dataClassification, title: sanitizePublicTextV4(publication.title),
+    period: sanitizePublicTextV4(publication.period), cutoff: structuredClone(publication.cutoff),
+    narrative: sanitizePublicTextV4(publication.narrative), publishedAt: publication.createdAt,
+    provenance: sanitizePublicTextV4(publication.createdBy),
     activities: publication.activities.map((item, index) => ({
-      code: `ATV-${String(index + 1).padStart(3, "0")}`, description: sanitizePublicText(item.description), bm: sanitizePublicText(item.bm),
-      hours: sanitizePublicText(item.hours), measuredValue: sanitizePublicText(item.measuredValue),
-      sourceHours: sanitizePublicText(item.sourceHours ?? item.hours), sourceMeasuredValue: sanitizePublicText(item.sourceMeasuredValue ?? item.measuredValue),
-      revision: item.adjustmentRevision ?? "0", reason: sanitizePublicText(item.adjustmentReason ?? "Sem ajuste"),
-      actor: sanitizePublicText(item.adjustedBy ?? "Auditoria importada"), adjustedAt: item.adjustedAt ?? null,
+      code: `ATV-${String(index + 1).padStart(3, "0")}`, description: sanitizePublicTextV4(item.description), bm: sanitizePublicTextV4(item.bm),
+      hours: sanitizePublicTextV4(item.hours), measuredValue: sanitizePublicTextV4(item.measuredValue),
+      sourceHours: sanitizePublicTextV4(item.sourceHours ?? item.hours), sourceMeasuredValue: sanitizePublicTextV4(item.sourceMeasuredValue ?? item.measuredValue),
+      revision: item.adjustmentRevision ?? "0", reason: sanitizePublicTextV4(item.adjustmentReason ?? "Sem ajuste"),
+      actor: sanitizePublicTextV4(item.adjustedBy ?? "Auditoria importada"), adjustedAt: item.adjustedAt ?? null,
     })),
     financialEntries: publication.financialEntries.map((item, index) => ({
       code: `FIN-${String(index + 1).padStart(3, "0")}`, groupCode: item.financialGroup,
-      sourceType: sanitizePublicText(item.sourceType), kind: sanitizePublicText(item.kind), label: sanitizePublicText(item.label),
-      amount: sanitizePublicText(item.amount), amountCents: item.amountCents,
-      relatedAmount: item.relatedAmount ? sanitizePublicText(item.relatedAmount) : null,
+      sourceType: sanitizePublicTextV4(item.sourceType), kind: sanitizePublicTextV4(item.kind), label: sanitizePublicTextV4(item.label),
+      amount: sanitizePublicTextV4(item.amount), amountCents: item.amountCents,
+      relatedAmount: item.relatedAmount ? sanitizePublicTextV4(item.relatedAmount) : null,
       relatedAmountCents: item.relatedAmountCents, fullValueEligible: item.fullValueEligible,
-      relationBasis: sanitizePublicText(item.relationBasis), currency: item.currency,
-      origin: sanitizePublicText(item.origin), relation: sanitizePublicText(item.relation), payment: sanitizePublicText(item.payment),
-      documentState: sanitizePublicText(item.documentState),
+      relationBasis: sanitizePublicTextV4(item.relationBasis), currency: item.currency,
+      origin: sanitizePublicTextV4(item.origin), relation: sanitizePublicTextV4(item.relation), payment: sanitizePublicTextV4(item.payment),
+      documentState: sanitizePublicTextV4(item.documentState),
       provenance: item.provenance ? {
-        sourceAmount: sanitizePublicText(item.provenance.sourceAmount), revision: item.provenance.revision, operation: item.provenance.operation,
-        reason: sanitizePublicText(item.provenance.reason ?? "Sem ajuste"), actor: sanitizePublicText(item.provenance.actor ?? "Auditoria importada"),
+        sourceAmount: sanitizePublicTextV4(item.provenance.sourceAmount), revision: item.provenance.revision, operation: item.provenance.operation,
+        reason: sanitizePublicTextV4(item.provenance.reason ?? "Sem ajuste"), actor: sanitizePublicTextV4(item.provenance.actor ?? "Auditoria importada"),
         adjustedAt: item.provenance.adjustedAt,
       } : null,
     })),
     evidence: publication.evidence.map((item, index) => ({ code: `EVD-${String(index + 1).padStart(3, "0")}`,
-      name: sanitizePublicText(item.name), kind: sanitizePublicText(item.kind), availability: sanitizePublicText(item.availability),
+      name: sanitizePublicTextV4(item.name), kind: sanitizePublicTextV4(item.kind), availability: sanitizePublicTextV4(item.availability),
       packageState: "Somente metadados; bytes permanecem no cofre autenticado" })),
     files: (publication.files ?? []).map((item, index) => ({ code: `ARQ-${String(index + 1).padStart(3, "0")}`,
-      documentId: item.documentId, versionId: item.versionId, title: sanitizePublicText(item.title), version: item.version,
-      originalName: sanitizePublicText(item.originalName), mediaType: sanitizePublicText(item.mediaType), sizeBytes: item.sizeBytes, sha256: item.sha256 })),
+      documentId: item.documentId, versionId: item.versionId, title: sanitizePublicTextV4(item.title), version: item.version,
+      originalName: sanitizePublicTextV4(item.originalName), mediaType: sanitizePublicTextV4(item.mediaType), sizeBytes: item.sizeBytes, sha256: item.sha256 })),
   };
 }
 
@@ -70,7 +72,7 @@ export function buildPublicationCsvV4(publication: DemoPublication) {
     ...view.activities.map((item) => [view.publicationCode, "activity", item.code, "project_measurement", item.description, `${item.hours} · ${item.measuredValue}`, `${item.sourceHours} · ${item.sourceMeasuredValue}`, item.revision, item.actor, item.reason, item.bm]),
     ...view.financialEntries.map((item) => [view.publicationCode, "financial", item.code, item.groupCode, item.label, item.amount, item.provenance?.sourceAmount ?? item.amount, item.provenance?.revision ?? "0", item.provenance?.actor ?? "Auditoria importada", item.provenance?.reason ?? "Sem ajuste", `${item.relationBasis} · ${item.relation} · ${item.payment}`]),
     ...view.evidence.map((item) => [view.publicationCode, "evidence_metadata", item.code, null, item.name, item.availability, null, null, null, null, item.packageState]),
-    ...view.files.map((item) => [view.publicationCode, "file_metadata", item.code, null, sanitizePublicText(item.title), sanitizePublicText(item.originalName), null, String(item.version), null, null, `SHA-256 ${item.sha256}`]),
+    ...view.files.map((item) => [view.publicationCode, "file_metadata", item.code, null, sanitizePublicTextV4(item.title), sanitizePublicTextV4(item.originalName), null, String(item.version), null, null, `SHA-256 ${item.sha256}`]),
   ];
   return `\uFEFF${rows.map((row) => row.map(safeCsvCell).join(";")).join("\r\n")}\r\n`;
 }
