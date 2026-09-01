@@ -56,6 +56,11 @@ export type Project = {
     name: string;
     kind: string;
     availability: "Disponível" | "Pendente";
+    linkStrength?: string;
+    linkStatus?: string;
+    versionId?: string;
+    sizeBytes?: number;
+    sha256?: string;
   }>;
 };
 

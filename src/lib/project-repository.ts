@@ -3,7 +3,7 @@ import "server-only";
 import type { Sql, TransactionSql } from "postgres";
 import { demoProjects, getDemoProject, type Project, type ProjectStatus } from "./demo-data";
 import { getSql, isDatabaseConfigured } from "./database";
-import { evidenceAvailability, relationLabel } from "./project-semantics";
+import { relationLabel } from "./project-semantics";
 
 export type ProjectSummary = {
   id: string; name: string; period: string; status: ProjectStatus; narrative: string;
@@ -147,9 +147,16 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
       FROM effective_fiscal_note
       WHERE declared_project_id = ${id} OR candidate_project_id = ${id}
       ORDER BY note_number, id`,
-    sql<{ id: string; file_type: string | null; strength: string; status: string }[]>`
-      SELECT e.id, e.file_type, pe.strength, pe.status FROM project_evidence pe
-      JOIN evidence_asset e ON e.id = pe.evidence_asset_id WHERE pe.project_id = ${id} ORDER BY e.id`,
+    sql<{ id: string; file_type: string | null; strength: string; status: string; version_id: string | null;
+      original_name: string | null; size_bytes: string | null; sha256: string }[]>`
+      SELECT e.id, e.file_type, pe.strength, pe.status,
+        CASE WHEN d.id IS NOT NULL THEN v.id::text END version_id,
+        CASE WHEN d.id IS NOT NULL THEN v.original_name END original_name,
+        CASE WHEN d.id IS NOT NULL THEN v.size_bytes::text END size_bytes, e.sha256
+      FROM project_evidence pe JOIN evidence_asset e ON e.id = pe.evidence_asset_id
+      LEFT JOIN file_version v ON v.evidence_asset_id = e.id AND v.status = 'active'
+      LEFT JOIN file_document d ON d.id = v.document_id AND d.document_kind = 'evidence' AND d.status = 'active'
+      WHERE pe.project_id = ${id} ORDER BY e.id`,
     sql<{ activity_id: string; revision: string; operation: "adjust" | "restore"; reason: string; actor: string; created_at: string;
       before_duration_seconds: string | null; before_measured_value: string | null; duration_seconds: string | null; measured_value: string | null }[]>`
       SELECT h.activity_id, h.revision::text, h.operation, h.reason, h.actor, h.created_at::text,
@@ -195,8 +202,13 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
       };
     }),
     evidence: evidence.map((item, index) => ({
-      id: item.id, name: `Evidência ${String(index + 1).padStart(2, "0")}`,
-      kind: item.file_type || "Arquivo", availability: evidenceAvailability(item.status),
+      id: item.id, name: item.original_name || `Evidência ${String(index + 1).padStart(2, "0")}`,
+      kind: item.file_type || "Arquivo",
+      availability: item.version_id ? "Disponível" as const : "Pendente" as const,
+      linkStrength: item.strength, linkStatus: item.status,
+      versionId: item.version_id ?? undefined,
+      sizeBytes: item.size_bytes === null ? undefined : Number(item.size_bytes),
+      sha256: item.sha256,
     })),
   };
 }

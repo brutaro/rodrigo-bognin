@@ -169,7 +169,7 @@ services:
         condition: service_healthy
     read_only: true
     tmpfs:
-      - /tmp:size=32m,mode=1777
+      - /tmp:size=3g,mode=1777
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
@@ -211,6 +211,7 @@ services:
       - /tmp:size=64m,mode=1777
     read_only: true
     cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID"]
     security_opt:
       - no-new-privileges:true
     healthcheck:

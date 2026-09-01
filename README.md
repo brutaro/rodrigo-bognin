@@ -13,13 +13,13 @@ A pilha Docker local está operacional com:
 - 53 evidências por conteúdo e 72 vínculos com projetos;
 - narrativa e valores manuais em transações PostgreSQL;
 - publicações imutáveis, versionadas e verificadas por hash;
-- cofre de arquivos opacos com versões, SHA-256, quota de 9.000.000.000 bytes e volume dedicado;
+- cofre de arquivos opacos com versões, SHA-256, quota de 4.000.000.000 bytes e volume dedicado;
 - inclusão explícita de arquivos na publicação e expurgo destrutivo confirmado;
 - backup ZIP manual, completo e verificável, com restauração somente em destino isolado;
 - autenticação do único usuário Rodrigo por código permanente e cookie `HttpOnly`/`SameSite=Strict`;
 - exportações HTML autônomo e CSV protegido contra fórmulas;
 - acesso local em `127.0.0.1` e TLS obrigatório fora de loopback;
-- Railway, R2 e qualquer deploy externo desativados.
+- runtime e IaC preparados para Railway Hobby; R2 e OCI permanecem desativados.
 
 A aplicação não persiste pessoa, documento, tomador, descrição fiscal privada, campo reservado ou caminho bruto. Relações financeiras sem correspondência exata continuam sem chave de projeto.
 
@@ -69,7 +69,7 @@ Abra `http://127.0.0.1:3100/entrar` e use o conteúdo de `.secrets/tria_login_co
 
 **Não execute `docker compose down -v`.** Essa opção apaga o banco e o cofre de arquivos locais. `docker compose down` preserva os volumes nomeados.
 
-Consulte [`docs/docker-local.md`](docs/docker-local.md) para migração, importação, backup e restauração.
+Consulte [`docs/docker-local.md`](docs/docker-local.md) para o runtime local e [`docs/deploy-github-railway.md`](docs/deploy-github-railway.md) para GitHub/Railway.
 
 ## Validar
 
@@ -101,6 +101,6 @@ As fixtures fictícias continuam disponíveis somente para testes de domínio. S
 
 - Uma conta local: Rodrigo.
 - Um único usuário autenticado: Rodrigo; sem cadastro, convite, perfil ou aprovação de terceiros.
-- Sem Railway, R2, OCI ou segundo provedor.
+- Somente Railway Hobby como destino externo; sem R2, OCI ou segundo provedor.
 - Sem execução de PBIX, macros, scripts ou consultas de arquivos enviados.
 - Medição, nota, relação, valor informado e pagamento permanecem conceitos distintos.

@@ -12,7 +12,12 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:import": "node scripts/import-real-data.mjs",
     "db:validate": "node scripts/validate-database.mjs",
-    "test:integration": "node scripts/integration-smoke.mjs"
+    "test:integration": "node scripts/integration-smoke.mjs",
+    "files:import-evidence": "node scripts/import-evidence-files.mjs",
+    "release:scan": "node scripts/scan-release.mjs",
+    "origin:verify": "node scripts/verify-protected-origin.mjs",
+    "railway:check": "tsc --noEmit --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck .railway/railway.ts",
+    "test:ci-integration": "bash scripts/ci-isolated-integration.sh"
   },
   "dependencies": {
     "@react-pdf/renderer": "4.9.0",
@@ -34,6 +39,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "pdfjs-dist": "5.4.624",
+    "railway": "3.11.0",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^4.1.11"

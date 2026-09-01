@@ -9,3 +9,16 @@ var/*
 *.log
 npm-debug.log*
 references
+
+docs
+
+*.zip
+*.tar
+*.tar.gz
+*.dump
+*.sql.gz
+*.pbix
+*.xlsx
+*.xls
+/imports
+/evidence-staging

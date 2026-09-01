@@ -236,7 +236,9 @@ export async function listStoredKeys(kind: "objects" | "staging") {
 }
 
 export async function removeStagingObject(key: string) {
-  try { await unlink(storePath("staging", key)); } catch (error) {
+  const staging = storePath("staging", key);
+  try { await unlink(staging); } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  await syncDirectory(path.dirname(staging));
 }

@@ -19,12 +19,27 @@ RUN npm run build
 
 FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS runner
 WORKDIR /app
-ENV NODE_ENV=production     NEXT_TELEMETRY_DISABLED=1     HOSTNAME=0.0.0.0     PORT=3000
-RUN groupmod -g 1001 node && usermod -u 1001 -g 1001 node
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
+    PORT=3000
+RUN groupmod -g 1001 node && usermod -u 1001 -g 1001 node \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends util-linux \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /data/files \
+  && chown 1001:1001 /data/files
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
-RUN mkdir -p .next/cache && chown -R node:node .next
-USER node
+COPY --from=dependencies --chown=node:node /app/node_modules/postgres ./node_modules/postgres
+COPY --from=dependencies --chown=node:node /app/node_modules/csv-parse ./node_modules/csv-parse
+COPY --from=dependencies --chown=node:node /app/node_modules/yauzl ./node_modules/yauzl
+COPY --from=dependencies --chown=node:node /app/node_modules/yazl ./node_modules/yazl
+COPY --from=dependencies --chown=node:node /app/node_modules/pend ./node_modules/pend
+COPY --from=dependencies --chown=node:node /app/node_modules/buffer-crc32 ./node_modules/buffer-crc32
+COPY --from=builder --chown=node:node /app/scripts ./scripts
+COPY --from=builder --chown=node:node /app/db/migrations ./db/migrations
+RUN mkdir -p .next/cache && chown -R node:node .next && chmod 755 scripts/railway-entrypoint.sh scripts/railway-oneoff.sh
 EXPOSE 3000
-CMD ["node", "server.js"]
+ENTRYPOINT ["/app/scripts/railway-entrypoint.sh"]

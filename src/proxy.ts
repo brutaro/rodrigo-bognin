@@ -17,6 +17,9 @@ export async function proxy(request: NextRequest) {
     forwardedProtocol: request.headers.get("x-forwarded-proto"),
   });
   if (!boundaryAllowsRequest(boundary)) return new NextResponse("TLS obrigatório.", { status: 426 });
+  if (process.env.TRIA_MAINTENANCE_MODE === "enabled" && request.nextUrl.pathname !== "/api/health" && request.nextUrl.pathname !== "/api/backups/files") {
+    return new NextResponse("Manutenção em andamento.", { status: 503, headers: { "Cache-Control": "no-store" } });
+  }
   if (isPublicPath(request.nextUrl.pathname)) return NextResponse.next();
   let valid = false;
   try {

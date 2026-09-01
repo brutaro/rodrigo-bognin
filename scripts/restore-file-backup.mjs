@@ -53,31 +53,77 @@ function canonicalAccessControl(access) {
   const observed = access?.observed;
   const tableOwners = observed?.tableOwners;
   const databaseName = observed?.databaseAcl?.[0]?.object_name;
+  const legacyTable = [
+    "file_document|tria_app|INSERT|false", "file_document|tria_app|SELECT|false",
+    "file_operation_event|tria_app|INSERT|false", "file_operation_event|tria_app|SELECT|false",
+    "file_reservation|tria_app|DELETE|false", "file_reservation|tria_app|INSERT|false", "file_reservation|tria_app|SELECT|false",
+    "file_store_counter|tria_app|SELECT|false", "file_version|tria_app|INSERT|false", "file_version|tria_app|SELECT|false",
+    "publication|tria_app|INSERT|false", "publication|tria_app|SELECT|false",
+    "publication_file|tria_app|INSERT|false", "publication_file|tria_app|SELECT|false",
+  ];
+  const currentTable = legacyTable.filter((row) => !row.startsWith("file_document|tria_app|INSERT") && !row.startsWith("file_version|tria_app|INSERT"));
+  const updates = [
+    "file_document|include_in_publication|tria_app|UPDATE|false", "file_document|status|tria_app|UPDATE|false",
+    "file_document|title|tria_app|UPDATE|false", "file_document|updated_at|tria_app|UPDATE|false",
+    "file_reservation|status|tria_app|UPDATE|false", "file_store_counter|reserved_bytes|tria_app|UPDATE|false",
+    "file_store_counter|used_bytes|tria_app|UPDATE|false", "file_store_counter|volume_uuid|tria_app|UPDATE|false",
+    "file_version|status|tria_app|UPDATE|false",
+  ];
+  const inserts = [
+    "file_document|created_at|tria_app|INSERT|false", "file_document|id|tria_app|INSERT|false",
+    "file_document|include_in_publication|tria_app|INSERT|false", "file_document|project_id|tria_app|INSERT|false",
+    "file_document|status|tria_app|INSERT|false", "file_document|title|tria_app|INSERT|false", "file_document|updated_at|tria_app|INSERT|false",
+    "file_version|created_at|tria_app|INSERT|false", "file_version|document_id|tria_app|INSERT|false", "file_version|id|tria_app|INSERT|false",
+    "file_version|media_type|tria_app|INSERT|false", "file_version|object_key|tria_app|INSERT|false", "file_version|original_name|tria_app|INSERT|false",
+    "file_version|sha256|tria_app|INSERT|false", "file_version|size_bytes|tria_app|INSERT|false", "file_version|status|tria_app|INSERT|false",
+    "file_version|version|tria_app|INSERT|false",
+  ];
+  const tableAclValid = exactRows(observed?.tableAcl, ["object_name", "grantee", "privilege", "grantable"], currentTable) ||
+    exactRows(observed?.tableAcl, ["object_name", "grantee", "privilege", "grantable"], legacyTable);
+  const columnAclValid = exactRows(observed?.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], [...inserts, ...updates]) ||
+    exactRows(observed?.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], updates);
   return access?.owner === "Rodrigo" && access?.policy === "owner-only" && access?.runtimeRole === "tria_app" &&
     access?.directPublicationDelete === false && access?.purgeFunction === "complete_file_purge(p_document_id uuid)" &&
     exactRows(tableOwners, ["tablename", "tableowner"], [
-      "file_document|tria_migrator", "file_operation_event|tria_migrator", "file_reservation|tria_migrator",
-      "file_store_counter|tria_migrator", "file_version|tria_migrator", "publication|tria_migrator", "publication_file|tria_migrator",
-    ]) && exactRows(observed?.tableAcl, ["object_name", "grantee", "privilege", "grantable"], [
-      "file_document|tria_app|INSERT|false", "file_document|tria_app|SELECT|false",
-      "file_operation_event|tria_app|INSERT|false", "file_operation_event|tria_app|SELECT|false",
-      "file_reservation|tria_app|DELETE|false", "file_reservation|tria_app|INSERT|false", "file_reservation|tria_app|SELECT|false",
-      "file_store_counter|tria_app|SELECT|false", "file_version|tria_app|INSERT|false", "file_version|tria_app|SELECT|false",
-      "publication|tria_app|INSERT|false", "publication|tria_app|SELECT|false",
-      "publication_file|tria_app|INSERT|false", "publication_file|tria_app|SELECT|false",
-    ]) && exactRows(observed?.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], [
-      "file_document|include_in_publication|tria_app|UPDATE|false", "file_document|status|tria_app|UPDATE|false",
-      "file_document|title|tria_app|UPDATE|false", "file_document|updated_at|tria_app|UPDATE|false",
-      "file_reservation|status|tria_app|UPDATE|false", "file_store_counter|reserved_bytes|tria_app|UPDATE|false",
-      "file_store_counter|used_bytes|tria_app|UPDATE|false", "file_store_counter|volume_uuid|tria_app|UPDATE|false",
-      "file_version|status|tria_app|UPDATE|false",
-    ]) && exactRows(observed?.functionAcl, ["object_name", "owner", "security_definer", "configuration", "grantee", "privilege", "grantable"], [
+      "file_document|tria_migrator", "file_operation_event|tria_migrator", "file_reservation|tria_migrator", "file_store_counter|tria_migrator",
+      "file_version|tria_migrator", "publication|tria_migrator", "publication_file|tria_migrator",
+    ]) && tableAclValid && columnAclValid &&
+    exactRows(observed?.functionAcl, ["object_name", "owner", "security_definer", "configuration", "grantee", "privilege", "grantable"], [
       "complete_file_purge(p_document_id uuid)|tria_migrator|true|search_path=pg_catalog, public|tria_app|EXECUTE|false",
     ]) && exactRows(observed?.schemaAcl, ["object_name", "owner", "grantee", "privilege", "grantable"], [
       "public|pg_database_owner|PUBLIC|USAGE|false", "public|pg_database_owner|tria_migrator|CREATE|false", "public|pg_database_owner|tria_migrator|USAGE|false",
     ]) && typeof databaseName === "string" && exactRows(observed?.databaseAcl, ["object_name", "owner", "grantee", "privilege", "grantable"], [
       `${databaseName}|tria_admin|tria_app|CONNECT|false`, `${databaseName}|tria_admin|tria_importer|CONNECT|false`, `${databaseName}|tria_admin|tria_migrator|CONNECT|false`,
     ]);
+}
+
+const evidenceMedia = new Map([
+  ["pdf", "application/pdf"], ["xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+  ["xlsb", "application/vnd.ms-excel.sheet.binary.macroEnabled.12"], ["xlsm", "application/vnd.ms-excel.sheet.macroEnabled.12"],
+  ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+  ["pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"], ["mp4", "video/mp4"], ["pbix", "application/octet-stream"],
+]);
+function normalizeAndValidateShape(model) {
+  const explicitDocuments = model.documents.every((item) => item.document_kind === "project" || item.document_kind === "evidence");
+  const explicitVersions = model.versions.every((item) => Object.hasOwn(item, "evidence_asset_id"));
+  const legacy = !model.documents.some((item) => Object.hasOwn(item, "document_kind")) && !model.versions.some((item) => Object.hasOwn(item, "evidence_asset_id"));
+  if (!legacy && (!explicitDocuments || !explicitVersions)) throw new Error("Shape misto do catálogo recusado.");
+  const documents = model.documents.map((item) => legacy ? { ...item, document_kind: "project" } : item);
+  const versions = model.versions.map((item) => legacy ? { ...item, evidence_asset_id: null } : item);
+  for (const document of documents) {
+    const owned = versions.filter((item) => item.document_id === document.id);
+    if (document.document_kind === "project") {
+      if (!document.project_id || owned.some((item) => item.evidence_asset_id !== null)) throw new Error("Shape de documento de projeto inválido.");
+    } else {
+      if (document.project_id !== null || document.include_in_publication !== false || owned.length !== 1) throw new Error("Shape de documento de evidência inválido.");
+      const version = owned[0];
+      const match = /^EV-\d{3}\.([a-z0-9]+)$/.exec(version.original_name ?? "");
+      const legacySafeName = version.original_name === `evidencia-${version.sha256}` && version.media_type === "application/octet-stream";
+      if ((!legacySafeName && (!match || !evidenceMedia.has(match[1]) || evidenceMedia.get(match[1]) !== version.media_type)) || version.version !== 1 ||
+          !/^[0-9a-f]{64}$/.test(version.evidence_asset_id ?? "") || version.sha256 !== version.evidence_asset_id) throw new Error("Shape, nome ou mídia da evidência inválido.");
+    }
+  }
+  return { ...model, documents, versions };
 }
 
 const zip = await openZip(path.resolve(bundle));
@@ -110,7 +156,7 @@ try {
             !/^[0-9a-f]{64}$/.test(object.sha256)) throw new Error("Manifesto contém objeto inválido.");
         paths.add(object.path); total += object.sizeBytes;
       }
-      if (!Number.isSafeInteger(total) || total > 9_000_000_000) throw new Error("Manifesto excede a quota do cofre.");
+      if (!Number.isSafeInteger(total) || total > 4_000_000_000) throw new Error("Manifesto excede a quota do cofre.");
       continue;
     }
     if (name === "catalog.json") {
@@ -121,6 +167,7 @@ try {
       if (catalogModel.format !== "tria-file-catalog-v1" || !canonicalAccessControl(catalogModel.accessControl) ||
           !Array.isArray(catalogModel.documents) || !Array.isArray(catalogModel.versions) || !Array.isArray(catalogModel.publications) ||
           !Array.isArray(catalogModel.publicationLinks) || !catalogModel.quota || typeof catalogModel.quota !== "object") throw new Error("ACL ou catálogo incompatível.");
+      catalogModel = normalizeAndValidateShape(catalogModel);
       const declared = new Map(manifest.objects.map((item) => [item.path.slice("objects/".length), item]));
       const documents = new Set(catalogModel.documents.map((item) => item.id));
       const versions = new Set(catalogModel.versions.map((item) => item.id));
@@ -135,7 +182,8 @@ try {
       }
       for (const link of catalogModel.publicationLinks) if (!publications.has(link.publication_id) || !versions.has(link.file_version_id)) throw new Error("Vínculo do catálogo inválido.");
       const quota = catalogModel.quota;
-      if (String(catalogBytes) !== String(quota.used_bytes) || quota.reserved_bytes !== "0" || quota.quota_bytes !== "9000000000") throw new Error("Quota do catálogo inválida.");
+      if (String(catalogBytes) !== String(quota.used_bytes) || quota.reserved_bytes !== "0" || !["4000000000", "9000000000"].includes(quota.quota_bytes) ||
+          catalogBytes > 4_000_000_000) throw new Error("Quota do catálogo inválida ou incompatível com Hobby.");
       continue;
     }
     if (!validObjectPath(name) || !manifest || !catalog) throw new Error("Entrada inesperada no bundle.");
@@ -161,8 +209,11 @@ try {
     await chmod(path.join(temporary, "objects"), 0o700);
     await writeFile(path.join(temporary, ".tria-volume"), `${manifest.volumeUuid}
 `, { mode: 0o600, flag: "wx", flush: true });
-    await writeFile(path.join(temporary, "catalog.json"), catalog, { mode: 0o600, flag: "wx", flush: true });
-    await writeFile(path.join(temporary, "manifest.json"), `${JSON.stringify(manifest, null, 2)}
+    const normalizedCatalog = Buffer.from(`${JSON.stringify({ ...catalogModel, quota: { ...catalogModel.quota, quota_bytes: "4000000000" } }, null, 2)}
+`);
+    const normalizedManifest = { ...manifest, catalog: { ...manifest.catalog, sizeBytes: normalizedCatalog.length, sha256: digest(normalizedCatalog) } };
+    await writeFile(path.join(temporary, "catalog.json"), normalizedCatalog, { mode: 0o600, flag: "wx", flush: true });
+    await writeFile(path.join(temporary, "manifest.json"), `${JSON.stringify(normalizedManifest, null, 2)}
 `, { mode: 0o600, flag: "wx", flush: true });
     await syncPath(path.join(temporary, "objects"));
     await syncPath(path.join(temporary, "staging"));

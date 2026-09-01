@@ -8,6 +8,7 @@ import { Notice } from "@/components/notice";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { ProjectFiles } from "@/components/project-files";
+import { ProjectEvidence } from "@/components/project-evidence";
 import { EditableActivityTable } from "@/components/editable-activity-table";
 import { getProjectDetails } from "@/lib/project-repository";
 import { isDatabaseConfigured } from "@/lib/database";
@@ -184,6 +185,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             {localData ? <ProjectFiles projectId={project.id} documents={storedFiles} /> : (
               <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">O cofre exige PostgreSQL e o volume local íntegro.</section>
             )}
+
+            <ProjectEvidence projectId={project.id} evidence={project.evidence} />
 
             <section aria-labelledby="history-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
               <div className="border-b border-[var(--border)] p-5"><h2 id="history-title" className="text-lg font-bold text-[var(--ink)]">Histórico</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Quem registrou, o que mudou e quando.</p></div>

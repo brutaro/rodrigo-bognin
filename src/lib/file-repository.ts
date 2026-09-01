@@ -14,7 +14,7 @@ import {
   writeUploadObject,
 } from "./file-store";
 
-export const fileQuotaBytes = 9_000_000_000;
+export const fileQuotaBytes = 4_000_000_000;
 
 declare global { var triaFileOperation: Promise<void> | undefined; }
 
@@ -66,7 +66,7 @@ export class FileRepositoryError extends Error {
 }
 
 export type FileVersionRecord = {
-  id: string; documentId: string; projectId?: string; version: number; objectKey: string; originalName: string;
+  id: string; documentId: string; projectId?: string; evidenceAssetId?: string; version: number; objectKey: string; originalName: string;
   mediaType: string; sizeBytes: number; sha256: string; status: "active" | "purging"; createdAt: string;
 };
 
@@ -121,7 +121,7 @@ async function releaseReservation(id: string) {
 async function validateUploadTarget(projectId: string, documentId?: string | null) {
   const sql = getSql();
   const rows = documentId
-    ? await sql`SELECT d.id FROM file_document d WHERE d.id = ${documentId} AND d.project_id = ${projectId} AND d.status = 'active'`
+    ? await sql`SELECT d.id FROM file_document d WHERE d.id = ${documentId} AND d.document_kind = 'project' AND d.project_id = ${projectId} AND d.status = 'active'`
     : await sql`SELECT id FROM project WHERE id = ${projectId}`;
   if (!rows.length) throw new FileRepositoryError(documentId ? "Arquivo não encontrado." : "Projeto não encontrado.", "not-found");
 }
@@ -159,7 +159,7 @@ export async function uploadProjectFile(input: {
         const originalName = normalizeName(input.originalName);
         if (documentId) {
           const [document] = await tx<{ id: string }[]>`
-            SELECT id::text FROM file_document WHERE id = ${documentId} AND project_id = ${input.projectId} AND status = 'active' FOR UPDATE`;
+            SELECT id::text FROM file_document WHERE id = ${documentId} AND document_kind = 'project' AND project_id = ${input.projectId} AND status = 'active' FOR UPDATE`;
           if (!document) throw new FileRepositoryError("Arquivo não encontrado.", "not-found");
           const [latest] = await tx<{ version: number }[]>`SELECT version FROM file_version WHERE document_id = ${documentId} ORDER BY version DESC LIMIT 1`;
           version = (latest?.version ?? 0) + 1;
@@ -183,16 +183,19 @@ export async function uploadProjectFile(input: {
         return { documentId, versionId, version, ...integrity };
       });
     } catch (error) {
-      await releaseReservation(reservation.id).catch(() => undefined);
       if (!stored) {
-        await removeStagingObject(reservation.id).catch(() => undefined);
+        await removeStagingObject(reservation.id);
+        await releaseReservation(reservation.id);
       } else {
         let referenced: boolean | undefined;
         try {
           const rows = await getSql()`SELECT id FROM file_version WHERE object_key = ${reservation.objectKey}`;
           referenced = rows.length > 0;
         } catch { referenced = undefined; }
-        if (referenced === false) await removeStoredObject(reservation.objectKey).catch(() => undefined);
+        if (referenced === false) {
+          await removeStoredObject(reservation.objectKey);
+          await releaseReservation(reservation.id);
+        }
       }
       throw error;
     }
@@ -211,7 +214,7 @@ export async function listProjectFiles(projectId: string) {
       v.id::text version_id, v.version, v.object_key::text, v.original_name, v.media_type,
       v.size_bytes::text, v.sha256, v.status version_status, v.created_at::text version_created_at
     FROM file_document d JOIN file_version v ON v.document_id = d.id
-    WHERE d.project_id = ${projectId} ORDER BY d.created_at, d.id, v.version DESC`;
+    WHERE d.document_kind = 'project' AND d.project_id = ${projectId} ORDER BY d.created_at, d.id, v.version DESC`;
   const documents = new Map<string, FileDocumentRecord>();
   for (const row of rows) {
     let document = documents.get(row.document_id);
@@ -242,10 +245,10 @@ export async function setFilePublicationInclusion(documentId: string, include: b
     return sql.begin(async (tx) => {
       const [updated] = await tx<{ project_id: string }[]>`
         UPDATE file_document SET include_in_publication = ${include}, updated_at = now()
-        WHERE id = ${documentId} AND status = 'active' AND include_in_publication IS DISTINCT FROM ${include}
+        WHERE id = ${documentId} AND document_kind = 'project' AND project_id IS NOT NULL AND status = 'active' AND include_in_publication IS DISTINCT FROM ${include}
         RETURNING project_id`;
       if (!updated) {
-        const [existing] = await tx<{ project_id: string }[]>`SELECT project_id FROM file_document WHERE id = ${documentId} AND status = 'active'`;
+        const [existing] = await tx<{ project_id: string }[]>`SELECT project_id FROM file_document WHERE id = ${documentId} AND document_kind = 'project' AND project_id IS NOT NULL AND status = 'active'`;
         if (!existing) throw new FileRepositoryError("Arquivo não encontrado.", "not-found");
         return { changed: false, include };
       }
@@ -262,14 +265,17 @@ export async function readFileVersion(versionId: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(versionId)) return undefined;
   const sql = getSql();
   const [row] = await sql<{
-    id: string; document_id: string; project_id: string; version: number; object_key: string; original_name: string;
-    media_type: string; size_bytes: string; sha256: string; status: "active" | "purging"; created_at: string;
-  }[]>`SELECT v.id::text, v.document_id::text, d.project_id, v.version, v.object_key::text, v.original_name, v.media_type,
-      v.size_bytes::text, v.sha256, v.status, v.created_at::text FROM file_version v JOIN file_document d ON d.id = v.document_id
-      WHERE v.id = ${versionId} AND v.status = 'active' AND d.status = 'active'`;
-  return row ? { id: row.id, documentId: row.document_id, projectId: row.project_id, version: row.version, objectKey: row.object_key,
-    originalName: row.original_name, mediaType: row.media_type, sizeBytes: Number(row.size_bytes),
-    sha256: row.sha256, status: row.status, createdAt: row.created_at } satisfies FileVersionRecord : undefined;
+    id: string; document_id: string; project_id: string | null; version: number; object_key: string; original_name: string;
+    media_type: string; size_bytes: string; sha256: string; evidence_asset_id: string | null;
+    status: "active" | "purging"; created_at: string;
+  }[]>`SELECT v.id::text, v.document_id::text, d.project_id, v.evidence_asset_id,
+      v.version, v.object_key::text, v.original_name, v.media_type, v.size_bytes::text, v.sha256, v.status, v.created_at::text
+    FROM file_version v JOIN file_document d ON d.id = v.document_id
+    WHERE v.id = ${versionId} AND v.status = 'active' AND d.status = 'active'`;
+  return row ? { id: row.id, documentId: row.document_id, projectId: row.project_id ?? undefined,
+    evidenceAssetId: row.evidence_asset_id ?? undefined, version: row.version, objectKey: row.object_key,
+    originalName: row.original_name, mediaType: row.media_type,
+    sizeBytes: Number(row.size_bytes), sha256: row.sha256, status: row.status, createdAt: row.created_at } satisfies FileVersionRecord : undefined;
 }
 
 export type FileOperation = "upload_version" | "publication_include" | "publication_exclude" | "download" | "backup_prepared" | "purge";
@@ -284,39 +290,54 @@ export async function recordFileOperation(input: {
       ${input.versionCount ?? 0}, ${input.publicationCount ?? 0}, 'Rodrigo', now())`;
 }
 
-export async function prepareFileDownload(versionId: string) {
+export async function prepareFileDownload(versionId: string, auditProjectId?: string) {
   const releaseOperation = await acquireFileOperation();
   let reservation: { id: string; objectKey: string | null } | undefined;
   try {
     const store = await reconcileFileStoreInternal();
     const version = await readFileVersion(versionId);
     if (!version) { releaseOperation(); return undefined; }
+    if (version.evidenceAssetId) {
+      if (!auditProjectId) { releaseOperation(); return undefined; }
+      const links = await getSql()`SELECT 1 FROM project_evidence WHERE project_id = ${auditProjectId} AND evidence_asset_id = ${version.evidenceAssetId}`;
+      if (!links.length) { releaseOperation(); return undefined; }
+    } else if (auditProjectId && version.projectId !== auditProjectId) { releaseOperation(); return undefined; }
     const safetyMargin = BigInt(16 * 1024 * 1024);
     if (store.availableBytes < BigInt(version.sizeBytes) + safetyMargin) {
       throw new FileRepositoryError("Espaço insuficiente para verificar o download.", "unavailable");
     }
     reservation = await reserveBytes(version.sizeBytes, false);
     await createVerifiedStagingSnapshot(version.objectKey, reservation.id, version.sizeBytes, version.sha256);
-    await recordFileOperation({ projectId: version.projectId, operation: "download", byteCount: version.sizeBytes, versionCount: 1 });
+    await recordFileOperation({ projectId: auditProjectId ?? version.projectId, operation: "download", byteCount: version.sizeBytes, versionCount: 1 });
     const source = await openStagingNodeStream(reservation.id);
     let finished = false;
     const finish = () => {
       if (finished) return;
       finished = true;
       void (async () => {
-        try { await removeVerifiedStagingSnapshot(reservation!.id); }
-        finally { await releaseReservation(reservation!.id).catch(() => undefined); releaseOperation(); }
+        try { await removeVerifiedStagingSnapshot(reservation!.id); await releaseReservation(reservation!.id); }
+        finally { releaseOperation(); }
       })().catch(() => undefined);
     };
     return { version, source, finish };
   } catch (error) {
     if (reservation) {
-      await removeVerifiedStagingSnapshot(reservation.id).catch(() => undefined);
-      await releaseReservation(reservation.id).catch(() => undefined);
+      await removeVerifiedStagingSnapshot(reservation.id);
+      await releaseReservation(reservation.id);
     }
     releaseOperation();
     throw error;
   }
+}
+
+export async function prepareEvidenceDownload(projectId: string, evidenceAssetId: string) {
+  if (!/^[A-Za-z0-9._:-]{1,200}$/.test(projectId) || !/^[0-9a-f]{64}$/.test(evidenceAssetId)) return undefined;
+  const [row] = await getSql()<Array<{ version_id: string }>>`SELECT v.id::text version_id
+    FROM project_evidence pe JOIN file_version v ON v.evidence_asset_id = pe.evidence_asset_id
+    JOIN file_document d ON d.id = v.document_id
+    WHERE pe.project_id = ${projectId} AND pe.evidence_asset_id = ${evidenceAssetId}
+      AND v.status = 'active' AND d.status = 'active' AND d.document_kind = 'evidence'`;
+  return row ? prepareFileDownload(row.version_id, projectId) : undefined;
 }
 
 export async function purgeFileDocument(documentId: string) {
@@ -325,7 +346,7 @@ export async function purgeFileDocument(documentId: string) {
     const sql = getSql();
     const state = await sql.begin(async (tx) => {
       const [document] = await tx<{ id: string; project_id: string }[]>`
-        SELECT id::text, project_id FROM file_document WHERE id = ${documentId} FOR UPDATE`;
+        SELECT id::text, project_id FROM file_document WHERE id = ${documentId} AND document_kind = 'project' AND project_id IS NOT NULL FOR UPDATE`;
       if (!document) throw new FileRepositoryError("Arquivo não encontrado.", "not-found");
       await tx`UPDATE file_document SET status = 'purging', updated_at = now() WHERE id = ${documentId}`;
       await tx`UPDATE file_version SET status = 'purging' WHERE document_id = ${documentId}`;
@@ -345,14 +366,23 @@ export async function purgeFileDocument(documentId: string) {
 async function reconcileFileStoreInternal() {
   const store = await assertBoundFileStore();
   const sql = getSql();
-  await sql.begin(async (tx) => {
-    const expired = await tx<{ id: string; reserved_bytes: string }[]>`
-      SELECT id::text, reserved_bytes::text FROM file_reservation WHERE status = 'reserved' FOR UPDATE`;
-    if (expired.length) {
-      const total = expired.reduce((sum, item) => sum + BigInt(item.reserved_bytes), BigInt(0));
-      await tx`UPDATE file_store_counter SET reserved_bytes = reserved_bytes - ${total.toString()} WHERE singleton`;
-      await tx`UPDATE file_reservation SET status = 'released' WHERE id IN ${tx(expired.map((item) => item.id))}`;
+  const expired = await sql<{ id: string; reserved_bytes: string; object_key: string | null }[]>`
+    SELECT id::text, reserved_bytes::text, object_key::text FROM file_reservation
+    WHERE status = 'reserved' AND expires_at <= now() ORDER BY created_at`;
+  for (const reservation of expired) {
+    await removeStagingObject(reservation.id);
+    if (reservation.object_key) {
+      const referenced = await sql`SELECT 1 FROM file_version WHERE object_key = ${reservation.object_key}`;
+      if (!referenced.length) await removeStoredObject(reservation.object_key);
     }
+  }
+  if (expired.length) await sql.begin(async (tx) => {
+    const stillExpired = await tx<{ id: string; reserved_bytes: string }[]>`
+      SELECT id::text, reserved_bytes::text FROM file_reservation
+      WHERE status = 'reserved' AND expires_at <= now() AND id IN ${tx(expired.map((item) => item.id))} FOR UPDATE`;
+    const total = stillExpired.reduce((sum, item) => sum + BigInt(item.reserved_bytes), BigInt(0));
+    if (total) await tx`UPDATE file_store_counter SET reserved_bytes = reserved_bytes - ${total.toString()} WHERE singleton`;
+    if (stillExpired.length) await tx`UPDATE file_reservation SET status = 'released' WHERE id IN ${tx(stillExpired.map((item) => item.id))}`;
   });
   const [versions, reservations] = await Promise.all([
     sql<{ object_key: string }[]>`SELECT object_key::text FROM file_version`,
@@ -436,14 +466,23 @@ function exactAcl(actual: Array<Record<string, unknown>>, keys: string[], expect
 function accessControlIsCanonical(access: Awaited<ReturnType<typeof liveFileAccessControl>>) {
   const observed = access.observed;
   const tableExpected = [
-    "file_document|tria_app|INSERT|false", "file_document|tria_app|SELECT|false",
+    "file_document|tria_app|SELECT|false",
     "file_operation_event|tria_app|INSERT|false", "file_operation_event|tria_app|SELECT|false",
     "file_reservation|tria_app|DELETE|false", "file_reservation|tria_app|INSERT|false", "file_reservation|tria_app|SELECT|false",
-    "file_store_counter|tria_app|SELECT|false", "file_version|tria_app|INSERT|false", "file_version|tria_app|SELECT|false",
+    "file_store_counter|tria_app|SELECT|false", "file_version|tria_app|SELECT|false",
     "publication|tria_app|INSERT|false", "publication|tria_app|SELECT|false",
     "publication_file|tria_app|INSERT|false", "publication_file|tria_app|SELECT|false",
   ];
   const columnExpected = [
+    "file_document|created_at|tria_app|INSERT|false", "file_document|id|tria_app|INSERT|false",
+    "file_document|include_in_publication|tria_app|INSERT|false", "file_document|project_id|tria_app|INSERT|false",
+    "file_document|status|tria_app|INSERT|false", "file_document|title|tria_app|INSERT|false",
+    "file_document|updated_at|tria_app|INSERT|false",
+    "file_version|created_at|tria_app|INSERT|false", "file_version|document_id|tria_app|INSERT|false",
+    "file_version|id|tria_app|INSERT|false", "file_version|media_type|tria_app|INSERT|false",
+    "file_version|object_key|tria_app|INSERT|false", "file_version|original_name|tria_app|INSERT|false",
+    "file_version|sha256|tria_app|INSERT|false", "file_version|size_bytes|tria_app|INSERT|false",
+    "file_version|status|tria_app|INSERT|false", "file_version|version|tria_app|INSERT|false",
     "file_document|include_in_publication|tria_app|UPDATE|false", "file_document|status|tria_app|UPDATE|false",
     "file_document|title|tria_app|UPDATE|false", "file_document|updated_at|tria_app|UPDATE|false",
     "file_reservation|status|tria_app|UPDATE|false", "file_store_counter|reserved_bytes|tria_app|UPDATE|false",
@@ -480,10 +519,10 @@ export async function canonicalFileCatalog() {
   const sql = getSql();
   const [counter] = await sql<{ quota_bytes: string; used_bytes: string; reserved_bytes: string }[]>`
     SELECT quota_bytes::text, used_bytes::text, reserved_bytes::text FROM file_store_counter WHERE singleton`;
-  const documents = await sql`SELECT id::text id, project_id, title, status, include_in_publication, created_at::text, updated_at::text
+  const documents = await sql`SELECT id::text id, project_id, document_kind, title, status, include_in_publication, created_at::text, updated_at::text
     FROM file_document WHERE status = 'active' ORDER BY id`;
   const versions = await sql`SELECT id::text id, document_id::text, version, object_key::text, original_name,
-    media_type, size_bytes::text, sha256, status, created_at::text FROM file_version WHERE status = 'active' ORDER BY id`;
+    media_type, size_bytes::text, sha256, evidence_asset_id, status, created_at::text FROM file_version WHERE status = 'active' ORDER BY id`;
   const publications = await sql`SELECT id::text id, project_id, version, content_hash FROM publication ORDER BY id`;
   const links = await sql`SELECT pf.publication_id::text, pf.file_version_id::text FROM publication_file pf
     JOIN publication p ON p.id = pf.publication_id JOIN file_version v ON v.id = pf.file_version_id

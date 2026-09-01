@@ -1,0 +1,85 @@
+name: CI e deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tria-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run release:scan
+      - run: npm run check
+      - run: npm run railway:check
+      - run: docker build --target tools --tag tria-tools:${{ github.sha }} .
+      - run: docker build --target runner --tag tria:${{ github.sha }} .
+      - name: Integração isolada com fixtures sintéticas
+        env:
+          TRIA_INTEGRATION_ISOLATED: confirmed
+          TRIA_INTEGRATION_NAMESPACE: tria-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+        run: npm run test:ci-integration
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: ci
+    runs-on: ubuntu-24.04
+    environment: production
+    concurrency:
+      group: tria-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Publicar exatamente o commit aprovado
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: npx --yes @railway/cli@5.47.1 up --service tria --ci
+      - name: Confirmar a nova release, não tráfego antigo
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 30); do
+            npx --yes @railway/cli@5.47.1 deployment list --service tria --json > "$RUNNER_TEMP/deployments.json"
+            if node -e 'const d=require(process.argv[1])[0]; process.exit(d && d.status === "SUCCESS" && d.meta?.commitHash === process.env.EXPECTED_SHA ? 0 : 1)' "$RUNNER_TEMP/deployments.json"; then
+              node -e 'const d=require(process.argv[1])[0]; console.log(`release Railway confirmada: ${d.id} @ ${d.meta.commitHash}`)' "$RUNNER_TEMP/deployments.json"
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
+      - name: Confirmar health e SHA públicos da nova release
+        env:
+          TRIA_PUBLIC_URL: ${{ vars.TRIA_PUBLIC_URL }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          test -n "$TRIA_PUBLIC_URL"
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error --max-time 10 "$TRIA_PUBLIC_URL/api/health" > "$RUNNER_TEMP/health.json" &&
+               node -e 'const h=require(process.argv[1]); process.exit(h.status === "ok" && h.release === process.env.EXPECTED_SHA ? 0 : 1)' "$RUNNER_TEMP/health.json"; then exit 0; fi
+            sleep 10
+          done
+          exit 1

@@ -12,8 +12,8 @@ const originalPath = process.env.TRIA_FILE_STORE_PATH;
 const originalUuidFile = process.env.TRIA_FILE_STORE_UUID_FILE;
 const temporary: string[] = [];
 afterEach(async () => {
-  process.env.TRIA_FILE_STORE_PATH = originalPath;
-  process.env.TRIA_FILE_STORE_UUID_FILE = originalUuidFile;
+  if (originalPath === undefined) delete process.env.TRIA_FILE_STORE_PATH; else process.env.TRIA_FILE_STORE_PATH = originalPath;
+  if (originalUuidFile === undefined) delete process.env.TRIA_FILE_STORE_UUID_FILE; else process.env.TRIA_FILE_STORE_UUID_FILE = originalUuidFile;
   await Promise.all(temporary.splice(0).map((item) => rm(item, { recursive: true, force: true })));
 });
 

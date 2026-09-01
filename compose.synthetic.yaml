@@ -1,0 +1,48 @@
+services:
+  evidence-tool:
+    profiles: ["synthetic"]
+    image: tria-plano-b-tools:local
+    build:
+      context: .
+      target: tools
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: tria
+      PGUSER: tria_migrator
+      PGPASSWORD_FILE: /run/secrets/db_migrator_password
+      TRIA_FILE_STORE_PATH: /data/files
+      TRIA_FILE_STORE_UUID_FILE: /run/secrets/file_store_uuid
+      TRIA_EVIDENCE_TEST_MODE: confirmed
+      TRIA_EVIDENCE_EXPECTED_COUNT: "2"
+      TRIA_EVIDENCE_EXPECTED_LINKS: "3"
+      TRIA_EVIDENCE_EXPECTED_TOTAL_BYTES: "5"
+      TRIA_INTEGRATION_ISOLATED: confirmed
+      TRIA_INTEGRATION_NAMESPACE: ${COMPOSE_PROJECT_NAME:?}
+      TRIA_LOGIN_CODE_FILE: /run/secrets/tria_login_code
+      TRIA_SESSION_KEY_FILE: /run/secrets/tria_session_key
+      APP_BASE_URL: http://app:3000
+    secrets:
+      - db_migrator_password
+      - file_store_uuid
+      - tria_login_code
+      - tria_session_key
+    volumes:
+      - file_data:/data/files
+      - "${TRIA_SYNTHETIC_EVIDENCE_DIR:?}:/imports/evidence:ro"
+    depends_on:
+      file-init:
+        condition: service_completed_successfully
+    command: ["node", "scripts/seed-synthetic-evidence.mjs"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m,mode=1777"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+  app:
+    environment:
+      TRIA_INTEGRATION_ISOLATED: confirmed
+      TRIA_INTEGRATION_NAMESPACE: ${COMPOSE_PROJECT_NAME:?}
+      TRIA_EVIDENCE_EXPECTED_PROJECTS: "2"
+      TRIA_EVIDENCE_EXPECTED_COUNT: "2"
+      TRIA_EVIDENCE_EXPECTED_LINKS: "3"
+      TRIA_EVIDENCE_EXPECTED_TOTAL_BYTES: "5"

@@ -1,4 +1,7 @@
 import { execFile } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -414,7 +417,8 @@ try {
   const backup = await http("/api/backups/files", { headers: { Cookie: cookie } });
   assert(backup.status === 200 && backup.headers.get("content-type") === "application/zip", "backup manual falhou");
   const bundle = "/tmp/tria-integration-backup.zip";
-  await fs.writeFile(bundle, Buffer.from(await backup.arrayBuffer()), { mode: 0o600 });
+  if (!backup.body) throw new Error("backup sem corpo");
+  await pipeline(Readable.fromWeb(backup.body), createWriteStream(bundle, { mode: 0o600 }));
   await execute("node", ["scripts/restore-file-backup.mjs", "--verify-only", bundle]);
   const restoreTarget = "/tmp/tria-integration-restore";
   await fs.rm(restoreTarget, { recursive: true, force: true });
