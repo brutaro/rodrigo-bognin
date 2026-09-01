@@ -1,8 +1,10 @@
+import { requireAuthenticatedApi } from "@/lib/auth";
 import { createHash } from "node:crypto";
 import { buildPublicationHtml } from "@/lib/demo-publication-export";
 import { PublicationIntegrityError, readPublication } from "@/lib/workspace";
 
 export async function GET(_request: Request, context: { params: Promise<{ publicationId: string }> }) {
+  if (!(await requireAuthenticatedApi())) return new Response("Não autenticado.", { status: 401 });
   try {
     const { publicationId } = await context.params;
     const publication = await readPublication(publicationId);

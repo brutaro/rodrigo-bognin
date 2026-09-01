@@ -1,3 +1,4 @@
+import { requireAuthenticatedPage } from "@/lib/auth";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { listPublicationSummaries } from "@/lib/project-repository";
@@ -5,6 +6,7 @@ import { listPublicationSummaries } from "@/lib/project-repository";
 export const dynamic = "force-dynamic";
 
 export default async function PublicationsPage() {
+  await requireAuthenticatedPage();
   const publications = await listPublicationSummaries();
   return (
     <AppShell>

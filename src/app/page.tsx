@@ -1,3 +1,4 @@
+import { requireAuthenticatedPage } from "@/lib/auth";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { ProjectList } from "@/components/project-list";
@@ -7,6 +8,7 @@ import { listProjectSummaries } from "@/lib/project-repository";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  await requireAuthenticatedPage();
   const projects = await listProjectSummaries();
   const currentProject = projects[0];
 

@@ -14,5 +14,6 @@ SELECT format('ALTER ROLE tria_migrator LOGIN PASSWORD %L', :'migrator_password'
 SELECT format('ALTER ROLE tria_importer LOGIN PASSWORD %L', :'importer_password')\gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA public TO tria_migrator;
-GRANT CONNECT ON DATABASE tria TO tria_app, tria_migrator, tria_importer;
+SELECT format('REVOKE CONNECT, TEMPORARY ON DATABASE %I FROM PUBLIC', current_database())\gexec
+SELECT format('GRANT CONNECT ON DATABASE %I TO tria_app, tria_migrator, tria_importer', current_database())\gexec
 SQL

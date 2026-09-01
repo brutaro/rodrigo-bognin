@@ -70,7 +70,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
-      - /app/.next:uid=1000,gid=1000,mode=0770
+      - /app/.next:uid=1001,gid=1001,mode=0770
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
@@ -107,6 +107,36 @@ services:
       - no-new-privileges:true
     restart: "no"
 
+  file-init:
+    image: tria-plano-b-tools:local
+    build:
+      context: .
+      target: tools
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: tria
+      PGUSER: tria_app
+      PGPASSWORD_FILE: /run/secrets/db_app_password
+      TRIA_FILE_STORE_PATH: /data/files
+      TRIA_FILE_STORE_UUID_FILE: /run/secrets/file_store_uuid
+    secrets:
+      - db_app_password
+      - file_store_uuid
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - file_data:/data/files
+    command: ["node", "scripts/init-file-store.mjs"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
   integration:
     profiles: ["validation"]
     image: tria-plano-b-tools:local
@@ -119,10 +149,18 @@ services:
       PGDATABASE: tria
       DB_APP_PASSWORD_FILE: /run/secrets/db_app_password
       DB_ADMIN_PASSWORD_FILE: /run/secrets/db_admin_password
+      TRIA_LOGIN_CODE_FILE: /run/secrets/tria_login_code
+      TRIA_FILE_STORE_PATH: /data/files
       APP_BASE_URL: http://app:3000
+      TRIA_INTEGRATION_ISOLATED: ${TRIA_INTEGRATION_ISOLATED:-disabled}
+      TRIA_INTEGRATION_NAMESPACE: ${COMPOSE_PROJECT_NAME:-tria-plano-b}
     secrets:
       - db_app_password
       - db_admin_password
+      - tria_login_code
+      - file_store_uuid
+    volumes:
+      - file_data:/data/files
     depends_on:
       app:
         condition: service_healthy
@@ -145,15 +183,27 @@ services:
       PGPASSWORD_FILE: /run/secrets/db_app_password
       PGPOOL_MAX: "5"
       TRIA_DEMO_WRITES: enabled
+      TRIA_LOGIN_CODE_FILE: /run/secrets/tria_login_code
+      TRIA_SESSION_KEY_FILE: /run/secrets/tria_session_key
+      TRIA_FILE_STORE_PATH: /data/files
+      TRIA_FILE_STORE_UUID_FILE: /run/secrets/file_store_uuid
+      TRIA_TRUST_PROXY: disabled
+      TRIA_LOCAL_HOSTS: app:3000
     secrets:
       - db_app_password
+      - tria_login_code
+      - tria_session_key
+      - file_store_uuid
     depends_on:
       migrate:
+        condition: service_completed_successfully
+      file-init:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:${TRIA_PORT:-3100}:3000"
     volumes:
       - next_cache:/app/.next/cache
+      - file_data:/data/files
     tmpfs:
       - /tmp:size=64m,mode=1777
     read_only: true
@@ -176,7 +226,14 @@ secrets:
     file: ./.secrets/db_migrator_password
   db_importer_password:
     file: ./.secrets/db_importer_password
+  tria_login_code:
+    file: ./.secrets/tria_login_code
+  tria_session_key:
+    file: ./.secrets/tria_session_key
+  file_store_uuid:
+    file: ./.secrets/file_store_uuid
 
 volumes:
   postgres_data:
   next_cache:
+  file_data:

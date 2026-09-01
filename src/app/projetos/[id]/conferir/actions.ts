@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { assertSameOrigin, requireAuthenticatedPage } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { publishProject } from "@/lib/workspace";
 
@@ -10,6 +11,8 @@ function projectPath(projectId: string, notice?: string) {
 }
 
 export async function publishProjectAction(projectId: string, expectedCompositionHash: string, expectedRevision: string, formData: FormData) {
+  await requireAuthenticatedPage();
+  await assertSameOrigin();
   if (process.env.TRIA_DEMO_WRITES !== "enabled") {
     redirect(projectPath(projectId, "writes-disabled"));
   }

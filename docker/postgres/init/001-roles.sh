@@ -14,5 +14,6 @@ SELECT format('CREATE ROLE tria_importer LOGIN PASSWORD %L', :'importer_password
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tria_importer')\gexec
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT USAGE, CREATE ON SCHEMA public TO tria_migrator;
-GRANT CONNECT ON DATABASE tria TO tria_app, tria_migrator, tria_importer;
+SELECT format('REVOKE CONNECT, TEMPORARY ON DATABASE %I FROM PUBLIC', current_database())\gexec
+SELECT format('GRANT CONNECT ON DATABASE %I TO tria_app, tria_migrator, tria_importer', current_database())\gexec
 SQL

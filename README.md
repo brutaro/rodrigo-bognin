@@ -13,8 +13,12 @@ A pilha Docker local está operacional com:
 - 53 evidências por conteúdo e 72 vínculos com projetos;
 - narrativa e valores manuais em transações PostgreSQL;
 - publicações imutáveis, versionadas e verificadas por hash;
+- cofre de arquivos opacos com versões, SHA-256, quota de 9.000.000.000 bytes e volume dedicado;
+- inclusão explícita de arquivos na publicação e expurgo destrutivo confirmado;
+- backup ZIP manual, completo e verificável, com restauração somente em destino isolado;
+- autenticação do único usuário Rodrigo por código permanente e cookie `HttpOnly`/`SameSite=Strict`;
 - exportações HTML autônomo e CSV protegido contra fórmulas;
-- acesso somente em `127.0.0.1`;
+- acesso local em `127.0.0.1` e TLS obrigatório fora de loopback;
 - Railway, R2 e qualquer deploy externo desativados.
 
 A aplicação não persiste pessoa, documento, tomador, descrição fiscal privada, campo reservado ou caminho bruto. Relações financeiras sem correspondência exata continuam sem chave de projeto.
@@ -33,7 +37,7 @@ Este projeto vive exclusivamente em `RODRIGO-BOGNIN/PLANO_B_TRIA/`.
 
 1. Copie `.env.example` para `.env`.
 2. Em `.env`, informe somente os quatro caminhos locais aprovados.
-3. Crie quatro arquivos de senha aleatória em `.secrets/`:
+3. Crie os quatro arquivos de senha do banco e os três secrets permanentes do proprietário em `.secrets/`:
 
 ```bash
 mkdir -p .secrets
@@ -42,6 +46,10 @@ openssl rand -base64 36 > .secrets/db_admin_password
 openssl rand -base64 36 > .secrets/db_app_password
 openssl rand -base64 36 > .secrets/db_migrator_password
 openssl rand -base64 36 > .secrets/db_importer_password
+openssl rand -base64 24 > .secrets/tria_login_code
+openssl rand -base64 48 > .secrets/tria_session_key
+node -e 'console.log(crypto.randomUUID())' > .secrets/file_store_uuid
+chmod 600 .secrets/*
 ```
 
 4. Inicie a pilha:
@@ -57,9 +65,9 @@ docker compose ps
 curl --fail http://127.0.0.1:3100/api/health
 ```
 
-Abra `http://127.0.0.1:3100`. Altere `TRIA_PORT` no `.env` se essa porta estiver ocupada.
+Abra `http://127.0.0.1:3100/entrar` e use o conteúdo de `.secrets/tria_login_code`. O mesmo código continua válido até uma rotação deliberada. Altere `TRIA_PORT` no `.env` se essa porta estiver ocupada.
 
-**Não execute `docker compose down -v`.** Essa opção apaga o banco local. `docker compose down` preserva os volumes nomeados.
+**Não execute `docker compose down -v`.** Essa opção apaga o banco e o cofre de arquivos locais. `docker compose down` preserva os volumes nomeados.
 
 Consulte [`docs/docker-local.md`](docs/docker-local.md) para migração, importação, backup e restauração.
 
@@ -77,16 +85,22 @@ No mesmo ambiente Node do contêiner:
 docker compose run --rm --no-deps migrate npm run check
 ```
 
-O comando executa 52 testes, ESLint, TypeScript e o build de produção.
+O comando executa 83 testes, ESLint, TypeScript e o build de produção. O teste PostgreSQL/HTTP é destrutivo e só aceita uma pilha Compose descartável cujo nome comece por `tria-vault-`. Use o procedimento de [`docs/docker-local.md`](docs/docker-local.md); ele se recusa a executar na pilha principal.
+
+## Cofre e backup
+
+Na página de cada projeto, Rodrigo pode enviar um arquivo, criar uma nova versão, escolher sua inclusão na próxima publicação e baixar qualquer versão ativa. O expurgo exige o código permanente e o texto `EXCLUIR`. Se o arquivo já foi publicado, o sistema remove a primeira publicação que o contém e todas as versões posteriores do projeto.
+
+O botão **Backup** baixa todos os objetos ativos, `catalog.json` e `manifest.json`. O restore deve ser verificado primeiro em banco e volume isolados. Consulte [`docs/docker-local.md`](docs/docker-local.md).
 
 ## Modo demonstrativo
 
-Sem configuração PostgreSQL, o código conserva um fallback local com dados fictícios para testes e demonstração. Esse fallback não atua como segundo escritor na pilha Docker. Com `PGHOST` ou `DATABASE_URL`, todas as leituras e gravações operacionais usam PostgreSQL.
+As fixtures fictícias continuam disponíveis somente para testes de domínio. Sem PostgreSQL e sem o volume validado, a aplicação operacional falha de forma fechada e não oferece um segundo escritor.
 
 ## Limites
 
 - Uma conta local: Rodrigo.
-- Sem autenticação para acesso em rede; por isso, o bind permanece em `127.0.0.1`.
+- Um único usuário autenticado: Rodrigo; sem cadastro, convite, perfil ou aprovação de terceiros.
 - Sem Railway, R2, OCI ou segundo provedor.
 - Sem execução de PBIX, macros, scripts ou consultas de arquivos enviados.
 - Medição, nota, relação, valor informado e pagamento permanecem conceitos distintos.

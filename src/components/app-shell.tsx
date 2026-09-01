@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { isDatabaseConfigured } from "@/lib/database";
+import { logoutAction } from "@/app/actions";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const localData = isDatabaseConfigured();
@@ -22,14 +23,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Link href="/projetos" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Projetos</Link>
             <Link href="/notas-fiscais" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Notas fiscais</Link>
             <Link href="/publicacoes" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Publicações</Link>
+            <a href="/api/backups/files" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Backup</a>
           </nav>
           <div className="flex items-center gap-3">
             <span className={`hidden rounded-full px-3 py-1.5 text-xs font-semibold sm:inline-flex ${localData ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
               {localData ? "Dados locais privados" : "Dados fictícios"}
             </span>
-            <span className="grid size-9 place-items-center rounded-full bg-slate-100 text-sm font-bold text-slate-700" aria-label="Conta de Rodrigo">
-              R
-            </span>
+            <span className="grid size-9 place-items-center rounded-full bg-slate-100 text-sm font-bold text-slate-700" aria-label="Conta de Rodrigo">R</span>
+            <form action={logoutAction}><button className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Sair</button></form>
           </div>
         </div>
       </header>
@@ -38,6 +39,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <Link href="/projetos" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Projetos</Link>
         <Link href="/notas-fiscais" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Notas fiscais</Link>
         <Link href="/publicacoes" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Publicações</Link>
+        <a href="/api/backups/files" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Backup</a>
       </nav>
       <div className={`border-b ${localData ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
         <p className={`mx-auto max-w-7xl px-5 py-2 text-sm lg:px-8 ${localData ? "text-emerald-900" : "text-amber-900"}`}>

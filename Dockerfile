@@ -2,6 +2,7 @@
 FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+RUN groupmod -g 1001 node && usermod -u 1001 -g 1001 node && mkdir -p /data/files && chown node:node /data/files
 
 FROM base AS dependencies
 COPY package.json package-lock.json ./

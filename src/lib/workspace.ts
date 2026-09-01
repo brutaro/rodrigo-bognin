@@ -22,10 +22,13 @@ import {
   type HistoryEvent,
   type ManualFinancialEntry,
   type ManualFinancialKind,
+  type PublishedFile,
   PublicationIntegrityError,
 } from "./demo-workspace";
 import { getSql, isDatabaseConfigured } from "./database";
 import { getProjectDetails } from "./project-repository";
+import { assertBoundFileStore, withFileOperation } from "./file-repository";
+import { verifyStoredObject } from "./file-store";
 
 export {
   financialOrigins,
@@ -42,12 +45,17 @@ export type {
   HistoryEvent,
   ManualFinancialEntry,
   ManualFinancialKind,
+  PublishedFile,
 };
 
 const actor = "Rodrigo";
 
-export function buildWorkspaceCompositionHash(project: Parameters<typeof buildDemoCompositionHash>[0], draft: DemoProjectDraft) {
-  return buildDemoCompositionHash(project, draft, isDatabaseConfigured() ? "Dados privados locais" : "Dados fictícios");
+export function buildWorkspaceCompositionHash(
+  project: Parameters<typeof buildDemoCompositionHash>[0],
+  draft: DemoProjectDraft,
+  files?: PublishedFile[],
+) {
+  return buildDemoCompositionHash(project, draft, isDatabaseConfigured() ? "Dados privados locais" : "Dados fictícios", files);
 }
 
 export async function readProjectDraft(projectId: string): Promise<DemoProjectDraft> {
@@ -129,7 +137,7 @@ export async function addFinancialEntry(
   });
 }
 
-export async function publishProject(
+async function publishProjectInternal(
   projectId: string,
   expectedCompositionHash?: string,
   caveatsAcknowledged = false,
@@ -152,6 +160,19 @@ export async function publishProject(
     const entries = await tx<{ id: string; kind: ManualFinancialKind; description: string; amount_cents: string; origin: FinancialOrigin; document_state: ManualFinancialEntry["documentState"]; created_at: string }[]>`
       SELECT id::text, kind, description, amount_cents::text, origin, document_state, created_at::text
       FROM manual_financial_entry WHERE project_id = ${projectId} ORDER BY created_at, id`;
+    const fileRows = await tx<{
+      document_id: string; version_id: string; title: string; version: number; original_name: string;
+      media_type: string; size_bytes: string; sha256: string; object_key: string;
+    }[]>`SELECT DISTINCT ON (d.id) d.id::text document_id, v.id::text version_id, d.title,
+        v.version, v.original_name, v.media_type, v.size_bytes::text, v.sha256, v.object_key::text
+      FROM file_document d JOIN file_version v ON v.document_id = d.id
+      WHERE d.project_id = ${projectId} AND d.status = 'active' AND d.include_in_publication AND v.status = 'active'
+      ORDER BY d.id, v.version DESC`;
+    const publishedFiles: PublishedFile[] = fileRows.map((file) => ({
+      documentId: file.document_id, versionId: file.version_id, title: file.title, version: file.version,
+      originalName: file.original_name, mediaType: file.media_type, sizeBytes: Number(file.size_bytes), sha256: file.sha256,
+    }));
+    for (const file of fileRows) await verifyStoredObject(file.object_key, Number(file.size_bytes), file.sha256);
     const draft: DemoProjectDraft = {
       narrative: draftRows[0].narrative,
       updatedAt: draftRows[0].updated_at,
@@ -167,7 +188,7 @@ export async function publishProject(
     const now = new Date().toISOString();
     const candidate = buildPublicationSnapshot(
       project, draft, (prior?.version ?? 0) + 1, prior?.id ?? null, now,
-      randomUUID(), "Dados privados locais", actor,
+      randomUUID(), "Dados privados locais", actor, publishedFiles,
     );
     if (expectedCompositionHash) assertDemoCompositionMatches(expectedCompositionHash, candidate.contentHash);
     if (prior?.contentHash === candidate.contentHash) return { publication: prior, created: false };
@@ -175,11 +196,27 @@ export async function publishProject(
       (id, project_id, version, prior_publication_id, created_at, created_by, content_hash, record_hash, snapshot)
       VALUES (${candidate.id}, ${projectId}, ${candidate.version}, ${candidate.priorPublicationId}, ${candidate.createdAt},
         ${candidate.createdBy}, ${candidate.contentHash}, ${candidate.recordHash}, ${tx.json(candidate)})`;
+    for (const file of publishedFiles) {
+      await tx`INSERT INTO publication_file (publication_id, file_version_id) VALUES (${candidate.id}, ${file.versionId})`;
+    }
     await tx`INSERT INTO history_event (id, project_id, action, detail, actor, occurred_at)
       VALUES (${randomUUID()}, ${projectId}, ${`Publicação V${candidate.version} criada`},
         'Uma cópia imutável do conteúdo local foi registrada.', ${actor}, ${now})`;
     await tx`UPDATE project_draft SET revision = revision + 1, updated_at = ${now} WHERE project_id = ${projectId}`;
     return { publication: candidate, created: true };
+  });
+}
+
+export async function publishProject(
+  projectId: string,
+  expectedCompositionHash?: string,
+  caveatsAcknowledged = false,
+  expectedRevision?: string,
+): Promise<{ publication: DemoPublication; created: boolean }> {
+  if (!isDatabaseConfigured()) return publishDemoProject(projectId, expectedCompositionHash, caveatsAcknowledged, expectedRevision);
+  return withFileOperation(async () => {
+    await assertBoundFileStore();
+    return publishProjectInternal(projectId, expectedCompositionHash, caveatsAcknowledged, expectedRevision);
   });
 }
 

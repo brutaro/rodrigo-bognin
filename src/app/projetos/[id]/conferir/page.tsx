@@ -1,3 +1,4 @@
+import { requireAuthenticatedPage } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
@@ -5,6 +6,8 @@ import { ActivityPagination, activityPageSize, normalizeActivityPage } from "@/c
 import { Notice } from "@/components/notice";
 import { SubmitButton } from "@/components/submit-button";
 import { getProjectDetails } from "@/lib/project-repository";
+import { isDatabaseConfigured } from "@/lib/database";
+import { currentPublishedFiles, listProjectFiles } from "@/lib/file-repository";
 import {
   buildWorkspaceCompositionHash,
   formatBrlFromCents,
@@ -16,12 +19,15 @@ import { publishProjectAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 export default async function ReviewProjectPage({ params, searchParams }: PageProps<"/projetos/[id]/conferir">) {
+  await requireAuthenticatedPage();
   const { id } = await params;
   const project = await getProjectDetails(id);
   if (!project) notFound();
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
   const draft = await readProjectDraft(project.id);
+  const fileDocuments = isDatabaseConfigured() ? await listProjectFiles(project.id) : [];
+  const publishedFiles = currentPublishedFiles(fileDocuments);
   const publications = await listProjectPublications(project.id);
   const pendingEvidence = project.evidence.filter((item) => item.availability === "Pendente");
   const undocumentedPayments = draft.manualFinancialEntries.filter(
@@ -31,7 +37,7 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
     (entry) => entry.relation === "Fraca" || entry.relation === "Sem relação confirmada",
   );
   const canPublish = draft.narrative.trim().length >= 20;
-  const compositionHash = buildWorkspaceCompositionHash(project, draft);
+  const compositionHash = buildWorkspaceCompositionHash(project, draft, isDatabaseConfigured() ? publishedFiles : undefined);
   const activityPage = normalizeActivityPage(typeof query.activityPage === "string" ? query.activityPage : undefined, project.activities.length);
   const activityStart = (activityPage - 1) * activityPageSize;
   const visibleActivities = project.activities.slice(activityStart, activityStart + activityPageSize);
@@ -83,6 +89,12 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
               <div className="border-b border-[var(--border)] p-5"><h2 id="preview-evidence" className="text-xl font-bold text-[var(--ink)]">Evidências</h2></div>
               <ul className="divide-y divide-[var(--border)]">{project.evidence.map((item) => <li key={item.id} className="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between"><div><strong className="text-sm">{item.name}</strong><p className="mt-1 text-xs text-slate-500">{item.id} · {item.kind}</p></div><span className={item.availability === "Disponível" ? "text-sm font-semibold text-emerald-700" : "text-sm font-semibold text-amber-700"}>{item.availability}</span></li>)}</ul>
             </section>
+
+            <section aria-labelledby="preview-files" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
+              <div className="border-b border-[var(--border)] p-5"><h2 id="preview-files" className="text-xl font-bold text-[var(--ink)]">Arquivos incluídos</h2><p className="mt-1 text-sm text-slate-500">A versão ativa mais recente de cada arquivo será vinculada ao snapshot.</p></div>
+              <ul className="divide-y divide-[var(--border)]">{publishedFiles.map((file) => <li key={file.versionId} className="p-5"><strong className="text-sm">{file.title}</strong><p className="mt-1 text-xs text-slate-500">V{file.version} · {file.originalName} · SHA-256 {file.sha256}</p></li>)}</ul>
+              {!publishedFiles.length ? <p className="p-5 text-sm text-slate-500">Nenhum arquivo pessoal será incluído.</p> : null}
+            </section>
           </div>
 
           <aside className="space-y-5 lg:sticky lg:top-5 lg:self-start">
@@ -103,7 +115,7 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
               <form action={publish} className="mt-5">
                 <label className="mb-4 flex items-start gap-3 rounded-xl border border-blue-200 bg-white p-3 text-sm leading-5 text-blue-950">
                   <input type="checkbox" name="acknowledgeCaveats" value="yes" required className="mt-1 size-4 shrink-0" />
-                  <span>Conferi esta composição e entendi os alertas acima. Itens pendentes e relações incertas continuarão identificados como tais.</span>
+                  <span>Conferi esta composição, inclusive os arquivos listados, e entendi os alertas acima. Itens pendentes e relações incertas continuarão identificados como tais.</span>
                 </label>
                 <SubmitButton idleLabel={publications.length ? "Publicar nova versão" : "Publicar versão 1"} pendingLabel="Publicando…" />
               </form>

@@ -6,6 +6,7 @@
 - `roles`: cria ou rotaciona os papéis locais sem expor senhas.
 - `migrate`: aplica migrações imutáveis com checksum e advisory lock.
 - `importer`: usa um papel sem DDL para validar e importar as quatro fontes em uma transação.
+- `file-init`: valida ou cria o sentinel no volume dedicado, sem fallback.
 - `app`: Next.js em Node.js 22, usuário não-root, raiz somente leitura e todas as capabilities removidas.
 
 Na primeira subida, a aplicação só fica saudável depois que as 59 linhas de projeto estão disponíveis. Após a carga, `docker compose up -d app` reinicia a aplicação sem reler as fontes. Os arquivos de origem são montados individualmente em modo `ro`.
@@ -29,13 +30,20 @@ Uma migração aplicada não pode mudar de checksum. Uma fonte já importada ret
 
 ## Teste integrado
 
-Com `app` e `db` saudáveis, execute:
+O teste integrado cria, corrompe e expurga arquivos. Ele **não pode** usar o banco ou o volume principal. Crie uma pilha descartável com nome único iniciado por `tria-vault-`:
 
 ```bash
-docker compose --profile validation run --rm integration
+export COMPOSE_PROJECT_NAME="tria-vault-validation-$(date +%Y%m%d%H%M%S)"
+export TRIA_PORT=3201
+export TRIA_INTEGRATION_ISOLATED=confirmed
+docker compose up --build -d
+docker compose --profile validation run --rm --no-deps integration
+docker compose down
+docker volume rm   "${COMPOSE_PROJECT_NAME}_postgres_data"   "${COMPOSE_PROJECT_NAME}_file_data"   "${COMPOSE_PROJECT_NAME}_next_cache"
+unset COMPOSE_PROJECT_NAME TRIA_PORT TRIA_INTEGRATION_ISOLATED
 ```
 
-O teste usa a mesma imagem de ferramentas de migração. Não cria uma imagem adicional e reverte a escrita de prova.
+O executável recusa a execução sem as duas confirmações de isolamento. A pilha principal nunca é limpa pelo teste. O comando não usa `docker compose down -v`.
 
 ## Estado e logs
 
@@ -46,6 +54,46 @@ curl --fail http://127.0.0.1:3100/api/health
 ```
 
 Os logs não devem conter linhas das fontes, documentos pessoais, descrições fiscais ou senhas.
+
+
+## Secrets de autenticação e cofre
+
+Crie os três arquivos uma única vez. Não os versione, não os copie para o banco e não os passe por URL:
+
+```bash
+umask 077
+mkdir -p .secrets
+openssl rand -base64 24 > .secrets/tria_login_code
+openssl rand -base64 48 > .secrets/tria_session_key
+node -e 'console.log(crypto.randomUUID())' > .secrets/file_store_uuid
+chmod 600 .secrets/tria_login_code .secrets/tria_session_key .secrets/file_store_uuid
+```
+
+O primeiro arquivo contém o código permanente de Rodrigo. A rotação da chave de sessão encerra todas as sessões. A troca de `file_store_uuid` sem um novo volume faz a readiness falhar de propósito. Um volume vazio também é recusado quando o catálogo do banco já contém arquivos.
+
+## Cofre de arquivos
+
+O volume `file_data` é obrigatório e tem quota exata de 9.000.000.000 bytes, incluindo reservas. Verifique a saúde sem autenticação:
+
+```bash
+docker compose up -d app
+curl --fail http://127.0.0.1:3100/api/health
+```
+
+Entre em `http://127.0.0.1:3100/entrar`. O painel do projeto permite enviar uma nova versão, baixar a versão exata e iniciar expurgo. O conteúdo enviado nunca é renderizado ou executado.
+
+## Backup manual do cofre
+
+Depois de entrar, use **Backup** na navegação. O download contém `manifest.json`, `catalog.json` e todos os objetos ativos. Verifique ou restaure somente em diretório isolado:
+
+```bash
+node scripts/restore-file-backup.mjs --verify-only var/backups/tria-file-backup-AAAA-MM-DD.zip
+node scripts/restore-file-backup.mjs --target var/restore-files var/backups/tria-file-backup-AAAA-MM-DD.zip
+```
+
+O restore cria `objects/`, `staging/` e `.tria-volume`, e preserva o UUID do bundle. O diretório pode ser montado somente com o mesmo `file_store_uuid`. Restaure o dump PostgreSQL no banco isolado antes de ligar esse volume; o catálogo JSON permite conferir versões, vínculos e ACLs contra o banco restaurado.
+
+O restore exige destino ausente e recusa qualquer destino existente, entrada ZIP inesperada, catálogo adulterado, objeto ausente, ACL divergente ou SHA-256 inválido. Ele nunca substitui o banco ou o volume principal.
 
 ## Backup local
 
@@ -67,12 +115,13 @@ Restaure sempre em outro banco. Não substitua o banco principal durante um test
 ```bash
 docker compose exec -T db createdb -U tria_admin -O tria_admin tria_restore_test
 docker compose exec -T db pg_restore -U tria_admin -d tria_restore_test < var/backups/tria.dump
+docker compose run --rm --no-deps -e PGDATABASE=tria_restore_test roles
 docker compose exec -T db psql -U tria_admin -d tria_restore_test -c "select count(*) from project;"
 docker compose exec -T db dropdb -U tria_admin tria_restore_test
 ```
 
 
-Após restaurar, valide também ownership e acesso da aplicação. O restore deve preservar owner e ACL do dump. Não use `--no-owner` nem `--no-acl` neste procedimento.
+O passo `roles` remove `CONNECT`/`TEMPORARY` de `PUBLIC` no banco novo e reaplica os grants nominais. Após restaurar, valide também ownership e acesso da aplicação. O restore deve preservar owner e ACL do dump. Não use `--no-owner` nem `--no-acl` neste procedimento.
 
 ```bash
 docker compose exec -T db psql -U tria_admin -d tria_restore_test -c "select tableowner from pg_tables where tablename = 'project';"

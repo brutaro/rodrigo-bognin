@@ -1,3 +1,4 @@
+import { requireAuthenticatedPage } from "@/lib/auth";
 import Link from "next/link";
 import { AppShell } from "@/components/app-shell";
 import { listFiscalNotes } from "@/lib/project-repository";
@@ -5,6 +6,7 @@ import { listFiscalNotes } from "@/lib/project-repository";
 export const dynamic = "force-dynamic";
 
 export default async function FiscalNotesPage() {
+  await requireAuthenticatedPage();
   const notes = await listFiscalNotes();
   return (
     <AppShell>

@@ -12,7 +12,7 @@ import { buildPublicationSnapshot, type DemoProjectDraft } from "./demo-workspac
 
 const project = getDemoProject("demonstracao-continuidade")!;
 
-function publicationWith(narrative: string) {
+function publicationWith(narrative: string, files?: Parameters<typeof buildPublicationSnapshot>[8]) {
   const draft: DemoProjectDraft = {
     narrative,
     manualFinancialEntries: [
@@ -36,6 +36,9 @@ function publicationWith(narrative: string) {
     null,
     "2026-08-31T12:30:00.000Z",
     "publication-internal-secret-id",
+    "Dados fictícios",
+    "Rodrigo (demonstração)",
+    files,
   );
 }
 
@@ -125,5 +128,25 @@ describe("renderizadores versionados", () => {
   ])("omite caminhos locais completos: %s", (value) => {
     const sanitized = sanitizePublicText(`Antes ${value} depois`);
     expect(sanitized).toBe("Antes [caminho local omitido] depois");
+  });
+});
+
+
+describe("renderizador v3", () => {
+  it("preserva literais que coincidem com nomes das versões v2", () => {
+    const literal = "texto tria-publication-v2 e tria-export-v2 preservado";
+    const publication = publicationWith(literal, [{
+      documentId: "10000000-0000-4000-8000-000000000001",
+      versionId: "10000000-0000-4000-8000-000000000002",
+      title: "Comprovante",
+      version: 1,
+      originalName: "comprovante.bin",
+      mediaType: "application/octet-stream",
+      sizeBytes: 3,
+      sha256: "a".repeat(64),
+    }]);
+    expect(buildPublicationHtml(publication)).toContain(literal);
+    expect(buildPublicationCsv(publication)).toContain(literal);
+    expect(buildPublicationHtml(publication)).toContain("tria-export-v3");
   });
 });

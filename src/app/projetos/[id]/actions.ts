@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { assertSameOrigin, requireAuthenticatedPage } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import {
   addFinancialEntry,
@@ -27,6 +28,8 @@ function readText(formData: FormData, field: string) {
 }
 
 export async function saveNarrativeAction(projectId: string, formData: FormData) {
+  await requireAuthenticatedPage();
+  await assertSameOrigin();
   assertLocalDemoWrites(projectId);
   const narrative = readText(formData, "narrative");
   const expectedRevision = readText(formData, "expectedRevision");
@@ -46,6 +49,8 @@ export async function saveNarrativeAction(projectId: string, formData: FormData)
 }
 
 export async function addFinancialEntryAction(projectId: string, formData: FormData) {
+  await requireAuthenticatedPage();
+  await assertSameOrigin();
   assertLocalDemoWrites(projectId);
   const kind = readText(formData, "kind");
   const description = readText(formData, "description");

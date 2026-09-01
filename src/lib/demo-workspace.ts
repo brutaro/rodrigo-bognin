@@ -77,6 +77,17 @@ export class PublicationIntegrityError extends Error {
   }
 }
 
+export type PublishedFile = {
+  documentId: string;
+  versionId: string;
+  title: string;
+  version: number;
+  originalName: string;
+  mediaType: string;
+  sizeBytes: number;
+  sha256: string;
+};
+
 export type DemoPublication = {
   id: string;
   projectId: string;
@@ -85,8 +96,8 @@ export type DemoPublication = {
   createdAt: string;
   createdBy: string;
   dataClassification: "Dados fictícios" | "Dados privados locais";
-  schemaVersion: "tria-publication-v1" | "tria-publication-v2";
-  rendererVersion: "tria-export-v1" | "tria-export-v2";
+  schemaVersion: "tria-publication-v1" | "tria-publication-v2" | "tria-publication-v3";
+  rendererVersion: "tria-export-v1" | "tria-export-v2" | "tria-export-v3";
   cutoff: {
     startDate: string;
     endDate: string;
@@ -108,6 +119,7 @@ export type DemoPublication = {
   activities: Project["activities"];
   financialEntries: PublishedFinancialEntry[];
   evidence: Project["evidence"];
+  files?: PublishedFile[];
 };
 
 type WorkspaceFileV1 = {
@@ -325,6 +337,7 @@ function publicationContent(
   project: Project,
   draft: DemoProjectDraft,
   dataClassification: DemoPublication["dataClassification"] = "Dados fictícios",
+  files?: PublishedFile[],
 ): Omit<DemoPublication, "id" | "version" | "priorPublicationId" | "createdAt" | "createdBy" | "contentHash" | "recordHash" | "review"> {
   const imported: PublishedFinancialEntry[] = project.financialReferences.map((reference) => ({
     id: reference.id,
@@ -379,8 +392,8 @@ function publicationContent(
   return {
     projectId: project.id,
     dataClassification,
-    schemaVersion: "tria-publication-v2",
-    rendererVersion: "tria-export-v2",
+    schemaVersion: files ? "tria-publication-v3" : "tria-publication-v2",
+    rendererVersion: files ? "tria-export-v3" : "tria-export-v2",
     cutoff: {
       startDate: project.periodStart,
       endDate: project.periodEnd,
@@ -394,6 +407,7 @@ function publicationContent(
     activities: structuredClone(project.activities),
     financialEntries: [...imported, ...manual],
     evidence: structuredClone(project.evidence),
+    ...(files ? { files: structuredClone(files) } : {}),
   };
 }
 
@@ -435,6 +449,7 @@ function storedPublicationContent(publication: DemoPublication): PublicationCont
     activities: publication.activities,
     financialEntries: publication.financialEntries,
     evidence: publication.evidence,
+    ...(publication.schemaVersion === "tria-publication-v3" ? { files: publication.files ?? [] } : {}),
   };
 }
 
@@ -442,8 +457,9 @@ export function buildDemoCompositionHash(
   project: Project,
   draft: DemoProjectDraft,
   dataClassification: DemoPublication["dataClassification"] = "Dados fictícios",
+  files?: PublishedFile[],
 ) {
-  return computePublicationContentHash(publicationContent(project, draft, dataClassification));
+  return computePublicationContentHash(publicationContent(project, draft, dataClassification, files));
 }
 
 export function verifyDemoPublicationIntegrity(publication: DemoPublication) {
@@ -486,8 +502,9 @@ export function buildPublicationSnapshot(
   id: string = randomUUID(),
   dataClassification: DemoPublication["dataClassification"] = "Dados fictícios",
   createdBy = "Rodrigo (demonstração)",
+  files?: PublishedFile[],
 ): DemoPublication {
-  const content = publicationContent(project, draft, dataClassification);
+  const content = publicationContent(project, draft, dataClassification, files);
   const contentHash = computePublicationContentHash(content);
   const record: Omit<DemoPublication, "recordHash"> = {
     id,

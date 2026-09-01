@@ -1,3 +1,4 @@
+import { requireAuthenticatedPage } from "@/lib/auth";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -6,8 +7,10 @@ import { ActivityPagination, activityPageSize, normalizeActivityPage } from "@/c
 import { Notice } from "@/components/notice";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
+import { ProjectFiles } from "@/components/project-files";
 import { getProjectDetails } from "@/lib/project-repository";
 import { isDatabaseConfigured } from "@/lib/database";
+import { listProjectFiles } from "@/lib/file-repository";
 import {
   financialOrigins,
   formatBrlFromCents,
@@ -28,6 +31,7 @@ function displayDate(iso: string) {
 }
 
 export default async function ProjectPage({ params, searchParams }: PageProps<"/projetos/[id]">) {
+  await requireAuthenticatedPage();
   const { id } = await params;
   const localData = isDatabaseConfigured();
   const project = await getProjectDetails(id);
@@ -35,6 +39,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
   const draft = await readProjectDraft(project.id);
+  const storedFiles = localData ? await listProjectFiles(project.id) : [];
   const latestPublication = (await listProjectPublications(project.id))[0];
   const saveNarrative = saveNarrativeAction.bind(null, project.id);
   const addFinancialEntry = addFinancialEntryAction.bind(null, project.id);
@@ -184,15 +189,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           </div>
 
           <aside className="space-y-6">
-            <section aria-labelledby="evidence-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
-              <div className="border-b border-[var(--border)] p-5"><h2 id="evidence-title" className="text-lg font-bold text-[var(--ink)]">Arquivos</h2></div>
-              <ul className="divide-y divide-[var(--border)]">
-                {project.evidence.map((item) => (
-                  <li key={item.id} className="p-5"><p className="break-words text-sm font-semibold text-[var(--ink)]">{item.name}</p><div className="mt-2 flex items-center justify-between gap-3 text-xs"><span className="text-slate-500">{item.kind}</span><span className={item.availability === "Disponível" ? "font-semibold text-emerald-700" : "font-semibold text-amber-700"}>{item.availability}</span></div></li>
-                ))}
-              </ul>
-              <div className="p-5"><button type="button" disabled className="w-full cursor-not-allowed rounded-xl border border-slate-300 bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-500">Adicionar arquivo</button></div>
-            </section>
+            {localData ? <ProjectFiles projectId={project.id} documents={storedFiles} /> : (
+              <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">O cofre exige PostgreSQL e o volume local íntegro.</section>
+            )}
 
             <section aria-labelledby="history-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
               <div className="border-b border-[var(--border)] p-5"><h2 id="history-title" className="text-lg font-bold text-[var(--ink)]">Histórico</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">Quem registrou, o que mudou e quando.</p></div>
