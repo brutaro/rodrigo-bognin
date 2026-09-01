@@ -61,6 +61,19 @@ export async function requireAuthenticatedApi() {
   return isAuthenticated();
 }
 
+export async function apiAuthenticationStatus(): Promise<"authenticated" | "invalid" | "unavailable"> {
+  const token = (await cookies()).get(sessionCookieName)?.value;
+  if (!token) return "invalid";
+  if (!isDatabaseConfigured()) return "unavailable";
+  try {
+    const payload = verifySessionTokenPayload(token, readSessionKey());
+    if (!payload) return "invalid";
+    const [session] = await getSql()`SELECT 1 FROM owner_session
+      WHERE id_hash = ${sessionIdHash(payload.jti, readSessionKey())} AND revoked_at IS NULL AND expires_at > now()`;
+    return session ? "authenticated" : "invalid";
+  } catch { return "unavailable"; }
+}
+
 export function isTrustedRequestOrigin(
   origin: string | null, host: string | null, protocol: string | null, localOverride?: boolean, secureOverride?: boolean,
 ) {

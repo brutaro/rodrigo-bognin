@@ -8,7 +8,7 @@ import {
   sanitizePublicText,
   toPublicPublication,
 } from "./demo-publication-export";
-import { buildPublicationSnapshot, type DemoProjectDraft } from "./demo-workspace";
+import { buildPublicationSnapshot, buildPublicationSnapshotV4, type DemoProjectDraft } from "./demo-workspace";
 
 const project = getDemoProject("demonstracao-continuidade")!;
 
@@ -148,5 +148,26 @@ describe("renderizador v3", () => {
     expect(buildPublicationHtml(publication)).toContain(literal);
     expect(buildPublicationCsv(publication)).toContain(literal);
     expect(buildPublicationHtml(publication)).toContain("tria-export-v3");
+  });
+});
+
+describe("exportação V4", () => {
+  it("expõe efetivo e proveniência sem misturar universos financeiros", () => {
+    const effective = structuredClone(project);
+    effective.financialReferences[0] = { ...effective.financialReferences[0], label: "​=1+1" };
+    effective.activities[0] = { ...effective.activities[0], hours: "30:15", measuredValue: "-R$ 12,50",
+      sourceHours: "12:30", sourceMeasuredValue: "R$ 1.125,00", adjustmentRevision: "1",
+      adjustmentReason: "Correção auditada", adjustedBy: "Rodrigo", adjustedAt: "2026-09-01T10:00:00.000Z" };
+    const snapshot = buildPublicationSnapshotV4(effective, {
+      narrative: "Narrativa V4 com /Users/rodrigo/Pasta privada/segredo.pdf controlado.", manualFinancialEntries: [], history: [], updatedAt: null,
+    }, 4, null, "2026-09-01T11:00:00.000Z");
+    const html = buildPublicationHtml(snapshot); const csv = buildPublicationCsv(snapshot); const view = toPublicPublication(snapshot);
+    expect(html).toContain("Horas originais");
+    expect(html).toContain("universos distintos");
+    expect(html).toContain("[caminho local omitido]");
+    expect(html).not.toContain("/Users/rodrigo");
+    expect(csv).toContain("Correção auditada");
+    expect(csv).toContain("'​=1+1");
+    expect(view.schemaVersion).toBe("tria-publication-v4");
   });
 });

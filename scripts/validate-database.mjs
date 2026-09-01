@@ -49,15 +49,37 @@ try {
     has_column_privilege('tria_app', 'owner_session', 'expires_at', 'update') app_can_extend_session,
     has_table_privilege('tria_app', 'file_operation_event', 'update') app_can_update_file_event,
     has_table_privilege('tria_app', 'publication', 'delete') app_can_delete_publication,
-    has_function_privilege('tria_app', 'complete_file_purge(uuid)', 'execute') app_can_complete_purge`;
+    has_function_privilege('tria_app', 'complete_file_purge(uuid)', 'execute') app_can_complete_purge,
+    (SELECT count(*)::int FROM effective_bm_activity) effective_activities,
+    (SELECT count(*)::int FROM effective_fiscal_note) effective_notes,
+    (SELECT count(*)::int FROM pg_trigger WHERE tgrelid IN ('owner_activity_revision'::regclass, 'owner_fiscal_note_revision'::regclass) AND NOT tgisinternal) adjustment_triggers,
+    NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND
+      ((table_name = 'effective_bm_activity' AND column_name IN ('batch_id','source_id','source_sheet','source_excel_row','cost_center','quality_status')) OR
+       (table_name = 'effective_fiscal_note' AND column_name IN ('batch_id','source_note_id')))) effective_views_safe,
+    has_table_privilege('tria_app', 'effective_bm_activity', 'select') app_can_read_effective_activities,
+    has_table_privilege('tria_app', 'effective_fiscal_note', 'select') app_can_read_effective_notes,
+    has_table_privilege('tria_app', 'owner_activity_revision', 'insert') app_can_insert_activity_revision,
+    has_table_privilege('tria_app', 'owner_fiscal_note_revision', 'update') app_can_update_fiscal_revision,
+    has_table_privilege('tria_app', 'bm_activity', 'update') app_can_update_activity_source,
+    has_table_privilege('tria_app', 'fiscal_note', 'update') app_can_update_fiscal_source,
+    has_table_privilege('tria_app', 'financial_relation', 'update') app_can_update_relation_source,
+    has_function_privilege('tria_app', 'apply_owner_activity_adjustment(text,bigint,uuid,text,bigint,numeric)', 'execute') app_can_adjust_activity,
+    has_function_privilege('tria_app', 'restore_owner_activity(text,bigint,uuid,text)', 'execute') app_can_restore_activity,
+    has_function_privilege('tria_app', 'apply_owner_fiscal_note_adjustment(text,bigint,uuid,text,smallint,text,date,numeric,text,text,text,text,text,text,boolean,numeric,boolean)', 'execute') app_can_adjust_fiscal,
+    has_function_privilege('tria_app', 'restore_owner_fiscal_note(text,bigint,uuid,text,boolean)', 'execute') app_can_restore_fiscal`;
   const expected = {
     batches: 4, projects: 59, activities: 3364, bms: 32, notes: 142, relations: 142,
     evidence_assets: 53, evidence_links: 72, mapped_candidates: 21, ineligible: 142,
-    relation_without_batch: 0, evidence_without_batch: 0, relation_wrong_batch: 0, asset_wrong_batch: 0, evidence_wrong_batch: 0, contact_hits: 0, migrations: 22, file_counter_valid: true, file_used_matches_catalog: true, file_reserved_matches_sessions: true, invalid_owner_sessions: 0, invalid_file_events: 0, orphan_file_versions: 0, orphan_object_reservations: 0, orphan_publication_files: 0,
+    relation_without_batch: 0, evidence_without_batch: 0, relation_wrong_batch: 0, asset_wrong_batch: 0, evidence_wrong_batch: 0, contact_hits: 0, migrations: 23, file_counter_valid: true, file_used_matches_catalog: true, file_reserved_matches_sessions: true, invalid_owner_sessions: 0, invalid_file_events: 0, orphan_file_versions: 0, orphan_object_reservations: 0, orphan_publication_files: 0,
     source_refs_opaque: true, evidence_refs_opaque: true, public_database_access: false, importer_can_ddl: false,
     importer_can_insert_activity: true, importer_can_publish: false, app_can_read_title: true,
     app_can_read_project_batch: false, app_can_update_narrative: true, app_can_move_draft: false,
     app_can_move_file: false, app_can_toggle_file: true, app_can_insert_file_version: true, app_can_insert_file_event: true, app_can_revoke_session: true, app_can_extend_session: false, app_can_update_file_event: false, app_can_delete_publication: false, app_can_complete_purge: true,
+    effective_activities: 3364, effective_notes: 142, adjustment_triggers: 4, effective_views_safe: true,
+    app_can_read_effective_activities: true, app_can_read_effective_notes: true,
+    app_can_insert_activity_revision: false, app_can_update_fiscal_revision: false,
+    app_can_update_activity_source: false, app_can_update_fiscal_source: false, app_can_update_relation_source: false,
+    app_can_adjust_activity: true, app_can_restore_activity: true, app_can_adjust_fiscal: true, app_can_restore_fiscal: true,
   };
   for (const [key, value] of Object.entries(expected)) if (row[key] !== value) throw new Error(`Invariante PostgreSQL falhou: ${key}.`);
   console.log(JSON.stringify({ status: "valid", projects: row.projects, activities: row.activities, notes: row.notes, evidence_links: row.evidence_links, migrations: row.migrations }));

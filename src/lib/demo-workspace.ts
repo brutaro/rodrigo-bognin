@@ -68,6 +68,16 @@ export type PublishedFinancialEntry = {
   payment: string;
   documentState: "Não avaliado" | "Sem arquivo associado" | "Com arquivo associado";
   recordedAt: string | null;
+  provenance?: {
+    sourceAmount: string;
+    sourceDeclaredProjectId: string | null;
+    sourceCandidateProjectId: string | null;
+    revision: string;
+    operation: "adjust" | "restore" | null;
+    reason: string | null;
+    actor: string | null;
+    adjustedAt: string | null;
+  };
 };
 
 export class PublicationIntegrityError extends Error {
@@ -96,8 +106,8 @@ export type DemoPublication = {
   createdAt: string;
   createdBy: string;
   dataClassification: "Dados fictícios" | "Dados privados locais";
-  schemaVersion: "tria-publication-v1" | "tria-publication-v2" | "tria-publication-v3";
-  rendererVersion: "tria-export-v1" | "tria-export-v2" | "tria-export-v3";
+  schemaVersion: "tria-publication-v1" | "tria-publication-v2" | "tria-publication-v3" | "tria-publication-v4";
+  rendererVersion: "tria-export-v1" | "tria-export-v2" | "tria-export-v3" | "tria-export-v4";
   cutoff: {
     startDate: string;
     endDate: string;
@@ -338,6 +348,7 @@ function publicationContent(
   draft: DemoProjectDraft,
   dataClassification: DemoPublication["dataClassification"] = "Dados fictícios",
   files?: PublishedFile[],
+  snapshotV4 = false,
 ): Omit<DemoPublication, "id" | "version" | "priorPublicationId" | "createdAt" | "createdBy" | "contentHash" | "recordHash" | "review"> {
   const imported: PublishedFinancialEntry[] = project.financialReferences.map((reference) => ({
     id: reference.id,
@@ -362,6 +373,16 @@ function publicationContent(
     payment: reference.payment,
     documentState: "Não avaliado",
     recordedAt: null,
+    ...(snapshotV4 ? { provenance: {
+      sourceAmount: reference.sourceAmount ?? reference.amount,
+      sourceDeclaredProjectId: reference.sourceDeclaredProjectId ?? null,
+      sourceCandidateProjectId: reference.sourceCandidateProjectId ?? null,
+      revision: reference.adjustmentRevision ?? "0",
+      operation: reference.adjustmentOperation ?? null,
+      reason: reference.adjustmentReason ?? null,
+      actor: reference.adjustedBy ?? null,
+      adjustedAt: reference.adjustedAt ?? null,
+    } } : {}),
   }));
   const manual: PublishedFinancialEntry[] = draft.manualFinancialEntries.map((entry) => ({
     id: entry.id,
@@ -392,8 +413,8 @@ function publicationContent(
   return {
     projectId: project.id,
     dataClassification,
-    schemaVersion: files ? "tria-publication-v3" : "tria-publication-v2",
-    rendererVersion: files ? "tria-export-v3" : "tria-export-v2",
+    schemaVersion: snapshotV4 ? "tria-publication-v4" : files ? "tria-publication-v3" : "tria-publication-v2",
+    rendererVersion: snapshotV4 ? "tria-export-v4" : files ? "tria-export-v3" : "tria-export-v2",
     cutoff: {
       startDate: project.periodStart,
       endDate: project.periodEnd,
@@ -407,7 +428,7 @@ function publicationContent(
     activities: structuredClone(project.activities),
     financialEntries: [...imported, ...manual],
     evidence: structuredClone(project.evidence),
-    ...(files ? { files: structuredClone(files) } : {}),
+    ...(files || snapshotV4 ? { files: structuredClone(files ?? []) } : {}),
   };
 }
 
@@ -449,7 +470,7 @@ function storedPublicationContent(publication: DemoPublication): PublicationCont
     activities: publication.activities,
     financialEntries: publication.financialEntries,
     evidence: publication.evidence,
-    ...(publication.schemaVersion === "tria-publication-v3" ? { files: publication.files ?? [] } : {}),
+    ...(publication.schemaVersion === "tria-publication-v3" || publication.schemaVersion === "tria-publication-v4" ? { files: publication.files ?? [] } : {}),
   };
 }
 
@@ -519,6 +540,20 @@ export function buildPublicationSnapshot(
       reviewedAt: createdAt,
       requestId: randomUUID(),
     },
+    ...content,
+  };
+  return { ...record, recordHash: computePublicationRecordHash(record) };
+}
+
+export function buildPublicationSnapshotV4(
+  project: Project, draft: DemoProjectDraft, version: number, priorPublicationId: string | null,
+  createdAt: string, id: string = randomUUID(), createdBy = "Rodrigo", files: PublishedFile[] = [],
+): DemoPublication {
+  const content = publicationContent(project, draft, "Dados privados locais", files, true);
+  const contentHash = computePublicationContentHash(content);
+  const record: Omit<DemoPublication, "recordHash"> = {
+    id, version, priorPublicationId, createdAt, createdBy, contentHash,
+    review: { compositionHash: contentHash, caveatsAcknowledged: true, reviewedAt: createdAt, requestId: randomUUID() },
     ...content,
   };
   return { ...record, recordHash: computePublicationRecordHash(record) };

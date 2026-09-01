@@ -8,6 +8,7 @@ import { Notice } from "@/components/notice";
 import { StatusBadge } from "@/components/status-badge";
 import { SubmitButton } from "@/components/submit-button";
 import { ProjectFiles } from "@/components/project-files";
+import { EditableActivityTable } from "@/components/editable-activity-table";
 import { getProjectDetails } from "@/lib/project-repository";
 import { isDatabaseConfigured } from "@/lib/database";
 import { listProjectFiles } from "@/lib/file-repository";
@@ -18,7 +19,7 @@ import {
   listProjectPublications,
   readProjectDraft,
 } from "@/lib/workspace";
-import { addFinancialEntryAction, saveNarrativeAction } from "./actions";
+import { addFinancialEntryAction, restoreActivityAction, saveActivityAdjustmentAction, saveNarrativeAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,11 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const financialRequestId = randomUUID();
   const activityPage = normalizeActivityPage(typeof query.activityPage === "string" ? query.activityPage : undefined, project.activities.length);
   const activityStart = (activityPage - 1) * activityPageSize;
-  const visibleActivities = project.activities.slice(activityStart, activityStart + activityPageSize);
+  const visibleActivities = project.activities.slice(activityStart, activityStart + activityPageSize).map((activity) => ({
+    ...activity, adjustmentRequestId: randomUUID(), restoreRequestId: randomUUID(),
+  }));
+  const saveActivityAdjustment = saveActivityAdjustmentAction.bind(null, project.id);
+  const restoreActivity = restoreActivityAction.bind(null, project.id);
 
   return (
     <AppShell>
@@ -68,6 +73,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               </p>
             </div>
             <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row">
+              {localData ? <a href={`/api/reports/projects/${encodeURIComponent(project.id)}`} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50">Baixar relatório PDF</a> : null}
               {latestPublication ? <Link href={`/publicacoes/${latestPublication.id}`} className="inline-flex h-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-900 hover:bg-blue-100">Ver publicação V{latestPublication.version}</Link> : null}
               <Link href={`/projetos/${project.id}/conferir`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-white hover:bg-blue-900">Ver como ficará</Link>
             </div>
@@ -108,23 +114,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 <h2 id="activities-title" className="text-lg font-bold text-[var(--ink)]">Atividades e medições</h2>
                 <p className="mt-1 text-sm text-[var(--ink-muted)]">Os valores medidos não são tratados como pagamentos. Mostrando {visibleActivities.length ? activityStart + 1 : 0}–{activityStart + visibleActivities.length} de {project.activities.length}.</p>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                    <tr><th className="px-5 py-3 font-semibold">Atividade</th><th className="px-5 py-3 font-semibold">BM</th><th className="px-5 py-3 font-semibold">Horas</th><th className="px-5 py-3 text-right font-semibold">Medido</th></tr>
-                  </thead>
-                  <tbody className="divide-y divide-[var(--border)]">
-                    {visibleActivities.map((activity) => (
-                      <tr key={activity.id}>
-                        <td className="px-5 py-4"><span className="block font-medium text-[var(--ink)]">{activity.description}</span><span className="mt-1 block text-xs text-slate-500">{activity.id}</span></td>
-                        <td className="px-5 py-4 text-slate-600">{activity.bm}</td>
-                        <td className="px-5 py-4 text-slate-600">{activity.hours}</td>
-                        <td className="px-5 py-4 text-right font-semibold text-[var(--ink)]">{activity.measuredValue}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {localData ? <EditableActivityTable activities={visibleActivities} saveAction={saveActivityAdjustment} restoreAction={restoreActivity} /> : (
+                <div className="divide-y divide-[var(--border)]">{visibleActivities.map((activity) => <article key={activity.id} className="p-5"><strong>{activity.description}</strong><p className="mt-1 text-sm text-slate-600">{activity.bm} · {activity.hours} · {activity.measuredValue}</p></article>)}</div>
+              )}
               <ActivityPagination basePath={`/projetos/${encodeURIComponent(project.id)}`} page={activityPage} total={project.activities.length} />
             </section>
 

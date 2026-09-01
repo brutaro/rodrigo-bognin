@@ -6,6 +6,7 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["@react-pdf/renderer"],
   turbopack: {
     root: projectRoot,
   },

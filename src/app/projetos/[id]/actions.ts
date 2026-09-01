@@ -10,6 +10,9 @@ import {
   parseBrlToCents,
   saveNarrative,
 } from "@/lib/workspace";
+import { adjustActivity, restoreActivity, AdjustmentConflictError } from "@/lib/source-adjustment-repository";
+import { assertAdjustmentReason, assertRequestId, assertRevision, parseDurationToSeconds, parseSignedBrlDecimal } from "@/lib/source-adjustment-validation";
+import type { AdjustmentActionState } from "@/lib/source-adjustment-types";
 
 function projectPath(projectId: string, notice?: string) {
   const base = `/projetos/${encodeURIComponent(projectId)}`;
@@ -78,4 +81,61 @@ export async function addFinancialEntryAction(projectId: string, formData: FormD
   }, requestId);
   revalidatePath(projectPath(projectId));
   redirect(projectPath(projectId, "financial-entry-saved"));
+}
+
+
+export async function saveActivityAdjustmentAction(
+  projectId: string, _previous: AdjustmentActionState, formData: FormData,
+): Promise<AdjustmentActionState> {
+  await requireAuthenticatedPage();
+  await assertSameOrigin();
+  if (process.env.TRIA_DEMO_WRITES !== "enabled") return { status: "unavailable", message: "A gravação está desativada." };
+  try {
+    const id = readText(formData, "activityId");
+    const requestId = assertRequestId(readText(formData, "requestId"));
+    const expectedRevision = assertRevision(readText(formData, "expectedRevision"));
+    const reason = assertAdjustmentReason(readText(formData, "reason"));
+    const durationSeconds = parseDurationToSeconds(readText(formData, "hoursMode"), readText(formData, "hours"));
+    const measuredValue = parseSignedBrlDecimal(readText(formData, "measurementMode"), readText(formData, "measurement"));
+    await adjustActivity({ id, projectId, requestId, expectedRevision, reason, durationSeconds, measuredValue });
+    revalidatePath(projectPath(projectId));
+    revalidatePath(`/projetos/${encodeURIComponent(projectId)}/conferir`);
+    return { status: "saved", message: "Ajuste salvo. A fonte importada permaneceu intacta." };
+  } catch (error) {
+    if (error instanceof AdjustmentConflictError) return {
+      status: "conflict", message: error.message, currentRevision: error.current.revision,
+      currentHours: error.current.hours, currentMeasuredValue: error.current.measuredValue,
+    };
+    if (error instanceof Error && ["inválid", "Informe", "Use horas", "muito grande"].some((text) => error.message.includes(text))) {
+      return { status: "invalid", message: error.message };
+    }
+    return { status: "unavailable", message: "Não foi possível salvar o ajuste agora." };
+  }
+}
+
+export async function restoreActivityAction(
+  projectId: string, _previous: AdjustmentActionState, formData: FormData,
+): Promise<AdjustmentActionState> {
+  await requireAuthenticatedPage();
+  await assertSameOrigin();
+  if (process.env.TRIA_DEMO_WRITES !== "enabled") return { status: "unavailable", message: "A gravação está desativada." };
+  try {
+    const id = readText(formData, "activityId");
+    const requestId = assertRequestId(readText(formData, "requestId"));
+    const expectedRevision = assertRevision(readText(formData, "expectedRevision"));
+    const reason = assertAdjustmentReason(readText(formData, "reason"));
+    await restoreActivity({ id, projectId, requestId, expectedRevision, reason });
+    revalidatePath(projectPath(projectId));
+    revalidatePath(`/projetos/${encodeURIComponent(projectId)}/conferir`);
+    return { status: "saved", message: "Restauração registrada como nova revisão." };
+  } catch (error) {
+    if (error instanceof AdjustmentConflictError) return {
+      status: "conflict", message: error.message, currentRevision: error.current.revision,
+      currentHours: error.current.hours, currentMeasuredValue: error.current.measuredValue,
+    };
+    if (error instanceof Error && ["inválid", "Informe"].some((text) => error.message.includes(text))) {
+      return { status: "invalid", message: error.message };
+    }
+    return { status: "unavailable", message: "Não foi possível restaurar a atividade agora." };
+  }
 }

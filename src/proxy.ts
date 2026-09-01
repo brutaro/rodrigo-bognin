@@ -27,7 +27,7 @@ export async function proxy(request: NextRequest) {
         WHERE id_hash = ${sessionIdHash(payload.jti, key)} AND revoked_at IS NULL AND expires_at > now()`;
       valid = Boolean(session);
     }
-  } catch { return new NextResponse("Autenticação indisponível.", { status: 503 }); }
+  } catch { return new NextResponse("Autenticação indisponível.", { status: 503, headers: { "Cache-Control": "private, no-store" } }); }
   if (valid) {
     const response = NextResponse.next();
     response.headers.set("Cache-Control", "private, no-store");

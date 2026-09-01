@@ -5,6 +5,7 @@ import {
   assertDraftRevision,
   buildDemoCompositionHash,
   buildPublicationSnapshot,
+  buildPublicationSnapshotV4,
   formatBrlFromCents,
   parseBrlToCents,
   verifyDemoPublicationIntegrity,
@@ -134,4 +135,22 @@ describe("snapshot de publicação", () => {
     expect(() => assertDemoCompositionMatches(reviewed, current)).toThrow(/mudou depois da conferência/);
     expect(() => assertDemoCompositionMatches(current, current)).not.toThrow();
   });
+  it("publica V4 com valores efetivos e proveniência sem alterar o ramo legado", () => {
+    const effectiveProject = structuredClone(project);
+    effectiveProject.activities[0] = { ...effectiveProject.activities[0], hours: "30:15", measuredValue: "-R$ 12,50",
+      sourceHours: "12:30", sourceMeasuredValue: "R$ 1.125,00", adjustmentRevision: "2",
+      adjusted: true, adjustmentReason: "Correção comprovada", adjustedBy: "Rodrigo", adjustedAt: "2026-09-01T10:00:00.000Z" };
+    effectiveProject.financialReferences[0] = { ...effectiveProject.financialReferences[0], amount: "R$ 1.600,00",
+      sourceAmount: "R$ 1.500,00", adjustmentRevision: "1", adjusted: true,
+      adjustmentReason: "Valor fiscal corrigido", adjustedBy: "Rodrigo", adjustedAt: "2026-09-01T10:10:00.000Z" };
+    const v4 = buildPublicationSnapshotV4(effectiveProject, draft(), 4, null, "2026-09-01T11:00:00.000Z");
+    const legacy = buildPublicationSnapshot(project, draft(), 3, null, "2026-09-01T11:00:00.000Z");
+    expect(v4.schemaVersion).toBe("tria-publication-v4");
+    expect(v4.rendererVersion).toBe("tria-export-v4");
+    expect(v4.activities[0]).toMatchObject({ hours: "30:15", sourceHours: "12:30", adjustmentRevision: "2" });
+    expect(v4.financialEntries[0].provenance).toMatchObject({ sourceAmount: "R$ 1.500,00", revision: "1", actor: "Rodrigo" });
+    expect(verifyDemoPublicationIntegrity(v4)).toBe(v4);
+    expect(legacy.schemaVersion).toBe("tria-publication-v2");
+  });
+
 });

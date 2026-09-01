@@ -5,7 +5,7 @@ import {
   addDemoFinancialEntry,
   assertDemoCompositionMatches,
   buildDemoCompositionHash,
-  buildPublicationSnapshot,
+  buildPublicationSnapshotV4,
   financialOrigins,
   formatBrlFromCents,
   listDemoProjectPublications,
@@ -55,7 +55,9 @@ export function buildWorkspaceCompositionHash(
   draft: DemoProjectDraft,
   files?: PublishedFile[],
 ) {
-  return buildDemoCompositionHash(project, draft, isDatabaseConfigured() ? "Dados privados locais" : "Dados fictícios", files);
+  if (!isDatabaseConfigured()) return buildDemoCompositionHash(project, draft, "Dados fictícios", files);
+  return buildPublicationSnapshotV4(project, draft, 1, null, "2000-01-01T00:00:00.000Z",
+    "00000000-0000-4000-8000-000000000001", actor, files ?? []).contentHash;
 }
 
 export async function readProjectDraft(projectId: string): Promise<DemoProjectDraft> {
@@ -145,8 +147,6 @@ async function publishProjectInternal(
 ): Promise<{ publication: DemoPublication; created: boolean }> {
   if (!isDatabaseConfigured()) return publishDemoProject(projectId, expectedCompositionHash, caveatsAcknowledged, expectedRevision);
   if (!caveatsAcknowledged) throw new Error("A conferência explícita é obrigatória.");
-  const project = await getProjectDetails(projectId);
-  if (!project) throw new Error("Projeto local desconhecido.");
   const sql = getSql();
   return sql.begin(async (tx) => {
     await tx`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`;
@@ -157,6 +157,10 @@ async function publishProjectInternal(
       throw new Error("A composição mudou depois da conferência.");
     }
     if (draftRows[0].narrative.trim().length < 20) throw new Error("A narrativa precisa ter pelo menos 20 caracteres.");
+    // O lock por projeto também é usado pela invalidação de ajustes. A leitura efetiva
+    // ocorre somente depois dele, para que a composição publicada seja consistente.
+    const project = await getProjectDetails(projectId, tx);
+    if (!project) throw new Error("Projeto local desconhecido.");
     const entries = await tx<{ id: string; kind: ManualFinancialKind; description: string; amount_cents: string; origin: FinancialOrigin; document_state: ManualFinancialEntry["documentState"]; created_at: string }[]>`
       SELECT id::text, kind, description, amount_cents::text, origin, document_state, created_at::text
       FROM manual_financial_entry WHERE project_id = ${projectId} ORDER BY created_at, id`;
@@ -186,9 +190,9 @@ async function publishProjectInternal(
       SELECT snapshot FROM publication WHERE project_id = ${projectId} ORDER BY version DESC LIMIT 1`;
     const prior = priorRows[0]?.snapshot ? verifyDemoPublicationIntegrity(priorRows[0].snapshot) : null;
     const now = new Date().toISOString();
-    const candidate = buildPublicationSnapshot(
+    const candidate = buildPublicationSnapshotV4(
       project, draft, (prior?.version ?? 0) + 1, prior?.id ?? null, now,
-      randomUUID(), "Dados privados locais", actor, publishedFiles,
+      randomUUID(), actor, publishedFiles,
     );
     if (expectedCompositionHash) assertDemoCompositionMatches(expectedCompositionHash, candidate.contentHash);
     if (prior?.contentHash === candidate.contentHash) return { publication: prior, created: false };

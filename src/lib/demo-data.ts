@@ -14,6 +14,14 @@ export type Project = {
     bm: string;
     hours: string;
     measuredValue: string;
+    sourceHours?: string;
+    sourceMeasuredValue?: string;
+    adjustmentRevision?: string;
+    adjustmentOperation?: "adjust" | "restore" | null;
+    adjusted?: boolean;
+    adjustmentReason?: string | null;
+    adjustedBy?: string | null;
+    adjustedAt?: string | null;
   }>;
   financialReferences: Array<{
     id: string;
@@ -25,6 +33,15 @@ export type Project = {
     relationBasis?: "Declarado na fonte" | "Candidato auditado" | "Sem vínculo de projeto";
     relation: "Forte" | "Média" | "Fraca" | "Sem relação confirmada";
     payment: "Não informado" | "Informado" | "Com comprovante";
+    sourceAmount?: string;
+    sourceDeclaredProjectId?: string | null;
+    sourceCandidateProjectId?: string | null;
+    adjustmentRevision?: string;
+    adjustmentOperation?: "adjust" | "restore" | null;
+    adjusted?: boolean;
+    adjustmentReason?: string | null;
+    adjustedBy?: string | null;
+    adjustedAt?: string | null;
   }>;
   evidence: Array<{
     id: string;

@@ -1,5 +1,6 @@
 import type { DemoPublication } from "./demo-workspace";
 import { buildPublicationCsv as buildPublicationCsvV1, buildPublicationHtml as buildPublicationHtmlV1, toPublicPublicationV1 } from "./demo-publication-export-v1";
+import { buildPublicationCsvV4, buildPublicationHtmlV4, toPublicPublicationV4 } from "./demo-publication-export-v4";
 
 export type PublicPublicationV2 = {
   publicationCode: string;
@@ -115,6 +116,7 @@ export function toPublicPublicationV3(publication: DemoPublication): PublicPubli
 
 export function toPublicPublication(publication: DemoPublication) {
   if (publication.rendererVersion === "tria-export-v1") return toPublicPublicationV1(publication);
+  if (publication.rendererVersion === "tria-export-v4") return toPublicPublicationV4(publication);
   if (publication.rendererVersion === "tria-export-v3") return toPublicPublicationV3(publication);
   return toPublicPublicationV2(publication);
 }
@@ -171,12 +173,14 @@ function buildPublicationHtmlV3(publication: DemoPublication) {
 
 export function buildPublicationCsv(publication: DemoPublication) {
   if (publication.rendererVersion === "tria-export-v1") return buildPublicationCsvV1(publication);
+  if (publication.rendererVersion === "tria-export-v4") return buildPublicationCsvV4(publication);
   if (publication.rendererVersion === "tria-export-v3") return buildPublicationCsvV3(publication);
   return buildPublicationCsvV2(publication);
 }
 
 export function buildPublicationHtml(publication: DemoPublication) {
   if (publication.rendererVersion === "tria-export-v1") return buildPublicationHtmlV1(publication);
+  if (publication.rendererVersion === "tria-export-v4") return buildPublicationHtmlV4(publication);
   if (publication.rendererVersion === "tria-export-v3") return buildPublicationHtmlV3(publication);
   return buildPublicationHtmlV2(publication);
 }

@@ -3,8 +3,10 @@ import { promisify } from "node:util";
 import fs from "node:fs/promises";
 import path from "node:path";
 import postgres from "postgres";
-if (process.env.TRIA_INTEGRATION_ISOLATED !== "confirmed" || !process.env.TRIA_INTEGRATION_NAMESPACE?.startsWith("tria-vault-")) {
-  throw new Error("Integração recusada: use um projeto Compose tria-vault-*, banco e volume descartáveis, e confirme TRIA_INTEGRATION_ISOLATED=confirmed.");
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
+if (process.env.TRIA_INTEGRATION_ISOLATED !== "confirmed" ||
+    !["tria-vault-", "tria-adjustments-"].some((prefix) => process.env.TRIA_INTEGRATION_NAMESPACE?.startsWith(prefix))) {
+  throw new Error("Integração recusada: use um projeto Compose tria-vault-* ou tria-adjustments-*, banco e volume descartáveis, e confirme TRIA_INTEGRATION_ISOLATED=confirmed.");
 }
 
 
@@ -15,13 +17,22 @@ const database = process.env.PGDATABASE ?? "tria";
 const appPassword = await secret(process.env.DB_APP_PASSWORD_FILE ?? "/run/secrets/db_app_password");
 const adminPassword = await secret(process.env.DB_ADMIN_PASSWORD_FILE ?? "/run/secrets/db_admin_password");
 const loginCode = await secret(process.env.TRIA_LOGIN_CODE_FILE ?? "/run/secrets/tria_login_code");
-const app = postgres({ host, database, username: "tria_app", password: appPassword, max: 1, prepare: false });
+const app = postgres({ host, database, username: "tria_app", password: appPassword, max: 2, prepare: false });
 const admin = postgres({ host, database, username: "tria_admin", password: adminPassword, max: 1, prepare: false });
 function assert(condition, message) { if (!condition) throw new Error(message); }
 const base = process.env.APP_BASE_URL ?? "http://app:3000";
 const browserOrigin = "http://app:3000";
 async function http(pathname, init = {}) {
   return fetch(`${base}${pathname}`, init);
+}
+async function extractPdfText(bytes) {
+  const document = await getDocument({ data: new Uint8Array(bytes), standardFontDataUrl: `${path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts")}/` }).promise;
+  const text = [];
+  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+    const content = await (await document.getPage(pageNumber)).getTextContent();
+    text.push(content.items.map((item) => "str" in item ? item.str : "").join(" "));
+  }
+  return { pages: document.numPages, text: text.join(" ") };
 }
 
 async function loginActionId() {
@@ -66,6 +77,89 @@ try {
   assert(ddlDenied, "tria_app recebeu DDL indevido");
 
   const [project] = await app`SELECT id FROM project ORDER BY id LIMIT 1`;
+  const [sourceActivity] = await app`SELECT a.id, a.duration_seconds::text source_duration, a.measured_value::text source_value,
+    e.adjustment_revision::text revision FROM bm_activity a JOIN effective_bm_activity e ON e.id = a.id
+    WHERE a.project_id = ${project.id} ORDER BY a.id LIMIT 1`;
+  const startingActivityRevision = BigInt(sourceActivity.revision);
+  const activityRequest = crypto.randomUUID();
+  await app`SELECT * FROM apply_owner_activity_adjustment(${sourceActivity.id}, ${sourceActivity.revision}, ${activityRequest}::uuid,
+    'Teste isolado de horas e medição', 108900, -12.50)`;
+  await app`SELECT * FROM apply_owner_activity_adjustment(${sourceActivity.id}, ${sourceActivity.revision}, ${activityRequest}::uuid,
+    'Teste isolado de horas e medição', 108900, -12.50)`;
+  const [{ activityRevisions }] = await app`SELECT count(*)::int "activityRevisions" FROM owner_activity_adjustment_history WHERE id = ${activityRequest}::uuid`;
+  assert(activityRevisions === 1, "retry de atividade não foi idempotente");
+  const competing = await Promise.allSettled([1, 2].map((index) => app`SELECT * FROM apply_owner_activity_adjustment(
+    ${sourceActivity.id}, ${(startingActivityRevision + 1n).toString()}, ${crypto.randomUUID()}::uuid, ${`Concorrência isolada ${index}`}, ${108900 + index * 60}, ${-12.50 - index})`));
+  assert(competing.filter((item) => item.status === "fulfilled").length === 1 &&
+    competing.filter((item) => item.status === "rejected" && ["40001", "23505"].includes(item.reason?.code)).length === 1,
+    "concorrência de atividade não produziu um vencedor e um conflito");
+  const restoreRequest = crypto.randomUUID();
+  await app`SELECT * FROM restore_owner_activity(${sourceActivity.id}, ${(startingActivityRevision + 2n).toString()}, ${restoreRequest}::uuid, 'Restaurar auditoria importada')`;
+  await app`SELECT * FROM restore_owner_activity(${sourceActivity.id}, ${(startingActivityRevision + 2n).toString()}, ${restoreRequest}::uuid, 'Restaurar auditoria importada')`;
+  const [restoredActivity] = await app`SELECT a.duration_seconds::text source_duration, a.measured_value::text source_value,
+    e.effective_duration_seconds::text effective_duration, e.effective_measured_value::text effective_value,
+    e.adjustment_revision::text revision FROM bm_activity a JOIN effective_bm_activity e ON e.id = a.id WHERE a.id = ${sourceActivity.id}`;
+  assert(restoredActivity.revision === (startingActivityRevision + 3n).toString() && restoredActivity.source_duration === sourceActivity.source_duration &&
+    restoredActivity.source_value === sourceActivity.source_value && restoredActivity.effective_duration === sourceActivity.source_duration &&
+    restoredActivity.effective_value === sourceActivity.source_value, "restauração não preservou fonte/efetivo");
+  const identicalRequest = crypto.randomUUID();
+  const identical = await Promise.allSettled([1, 2].map(() => app.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(hashtextextended(${'owner-activity:' + sourceActivity.id}, 23001))`;
+    return tx`SELECT * FROM apply_owner_activity_adjustment(${sourceActivity.id}, ${(startingActivityRevision + 3n).toString()},
+      ${identicalRequest}::uuid, 'Entrega simultânea idempotente', 3600, 1.25)`;
+  })));
+  assert(identical.every((item) => item.status === "fulfilled"), "entrega simultânea idêntica não foi idempotente");
+  const [{ identicalRows }] = await app`SELECT count(*)::int "identicalRows" FROM owner_activity_adjustment_history WHERE id = ${identicalRequest}::uuid`;
+  assert(identicalRows === 1, "entrega simultânea idêntica criou mais de uma revisão");
+  await app`SELECT * FROM restore_owner_activity(${sourceActivity.id}, ${(startingActivityRevision + 4n).toString()},
+    ${crypto.randomUUID()}::uuid, 'Restaurar após retry simultâneo')`;
+
+  const [sourceFiscal] = await app`SELECT id, source_issue_year issue_year, source_note_number note_number,
+    source_issue_date::text issue_date, source_amount::text amount, source_declared_project_id declared_project_id,
+    adjustment_revision::text revision FROM effective_fiscal_note ORDER BY id LIMIT 1`;
+  const startingFiscalRevision = BigInt(sourceFiscal.revision);
+  const fiscalRequest = crypto.randomUUID();
+  const fiscalIdentical = await Promise.allSettled([1, 2].map(() => app.begin(async (tx) => {
+    await tx`SELECT pg_advisory_xact_lock(23003)`;
+    await tx`SELECT pg_advisory_xact_lock(hashtextextended(${'owner-fiscal:' + sourceFiscal.id}, 23002))`;
+    return tx`SELECT * FROM apply_owner_fiscal_note_adjustment(${sourceFiscal.id}, ${startingFiscalRevision.toString()}, ${fiscalRequest}::uuid,
+      'Teste fiscal atômico', ${sourceFiscal.issue_year}::smallint, ${sourceFiscal.note_number}, ${sourceFiscal.issue_date}::date,
+      ${sourceFiscal.amount}::numeric, 'Categoria ajustada', ${sourceFiscal.declared_project_id}, NULL,
+      'Sem relação verificável', 'Não informado', NULL, NULL, NULL::numeric, true)`;
+  })));
+  assert(fiscalIdentical.every((item) => item.status === "fulfilled"), "entrega fiscal simultânea idêntica não foi idempotente");
+  const [{ fiscalIdenticalRows }] = await app`SELECT count(*)::int "fiscalIdenticalRows" FROM owner_fiscal_note_adjustment_history WHERE id = ${fiscalRequest}::uuid`;
+  assert(fiscalIdenticalRows === 1, "entrega fiscal simultânea criou mais de uma revisão");
+  let invalidRelationDenied = false;
+  try { await app`SELECT * FROM apply_owner_fiscal_note_adjustment(${sourceFiscal.id}, ${(startingFiscalRevision + 1n).toString()}, ${crypto.randomUUID()}::uuid,
+    'Relação inválida isolada', ${sourceFiscal.issue_year}::smallint, ${sourceFiscal.note_number}, ${sourceFiscal.issue_date}::date,
+    ${sourceFiscal.amount}::numeric, 'Não deve gravar', ${sourceFiscal.declared_project_id}, 'PROJETO-INEXISTENTE',
+    'Forte', 'Confirmada', NULL, false, ${sourceFiscal.amount}::numeric, true)`; }
+  catch (error) { invalidRelationDenied = error?.code === "23503"; }
+  const [fiscalAfterInvalid] = await app`SELECT adjustment_revision::text revision FROM effective_fiscal_note WHERE id = ${sourceFiscal.id}`;
+  assert(invalidRelationDenied && fiscalAfterInvalid.revision === (startingFiscalRevision + 1n).toString(), "relação fiscal inválida não foi atômica");
+  const fiscalRestore = crypto.randomUUID();
+  await app`SELECT * FROM restore_owner_fiscal_note(${sourceFiscal.id}, ${(startingFiscalRevision + 1n).toString()}, ${fiscalRestore}::uuid, 'Restaurar fonte fiscal', true)`;
+  await app`SELECT * FROM restore_owner_fiscal_note(${sourceFiscal.id}, ${(startingFiscalRevision + 1n).toString()}, ${fiscalRestore}::uuid, 'Restaurar fonte fiscal', true)`;
+  const [duplicateTarget] = await app`SELECT issue_year, note_number, issue_date::text issue_date, amount::text amount
+    FROM effective_fiscal_note WHERE id <> ${sourceFiscal.id} AND (issue_year, note_number) <> (${sourceFiscal.issue_year}::smallint, ${sourceFiscal.note_number})
+    ORDER BY id LIMIT 1`;
+  const duplicateRequest = crypto.randomUUID(); let duplicateDenied = false;
+  try { await app`SELECT * FROM apply_owner_fiscal_note_adjustment(${sourceFiscal.id}, ${(startingFiscalRevision + 2n).toString()},
+    ${duplicateRequest}::uuid, 'Confirmar duplicidade fiscal', ${duplicateTarget.issue_year}::smallint, ${duplicateTarget.note_number},
+    ${duplicateTarget.issue_date}::date, ${duplicateTarget.amount}::numeric, NULL, ${sourceFiscal.declared_project_id}, NULL,
+    'Sem relação verificável', 'Não informado', NULL, NULL, NULL::numeric, false)`; }
+  catch (error) { duplicateDenied = error?.code === "23505"; }
+  assert(duplicateDenied, "duplicidade fiscal não exigiu confirmação");
+  await app`SELECT * FROM apply_owner_fiscal_note_adjustment(${sourceFiscal.id}, ${(startingFiscalRevision + 2n).toString()},
+    ${duplicateRequest}::uuid, 'Confirmar duplicidade fiscal', ${duplicateTarget.issue_year}::smallint, ${duplicateTarget.note_number},
+    ${duplicateTarget.issue_date}::date, ${duplicateTarget.amount}::numeric, NULL, ${sourceFiscal.declared_project_id}, NULL,
+    'Sem relação verificável', 'Não informado', NULL, NULL, NULL::numeric, true)`;
+  await app`SELECT * FROM restore_owner_fiscal_note(${sourceFiscal.id}, ${(startingFiscalRevision + 3n).toString()},
+    ${crypto.randomUUID()}::uuid, 'Restaurar após teste de duplicidade', true)`;
+  await app`SELECT * FROM apply_owner_activity_adjustment(${sourceActivity.id}, ${(startingActivityRevision + 5n).toString()},
+    ${crypto.randomUUID()}::uuid, 'Valor efetivo para relatório e publicação V4', 111660, -123.45)`;
+
   await app.begin(async (tx) => {
     const requestId = crypto.randomUUID();
     await tx`INSERT INTO manual_financial_entry (id, project_id, kind, amount_cents, description, origin, document_state, created_at, request_id)
@@ -89,8 +183,10 @@ try {
   assert(health.status === 200, `health HTTP ${health.status}`);
   const anonymousPage = await http("/projetos", { redirect: "manual" });
   const anonymousFile = await http(`/api/files/${crypto.randomUUID()}/download`);
+  const anonymousReport = await http(`/api/reports/projects/${encodeURIComponent(project.id)}`);
   assert([302, 307, 308].includes(anonymousPage.status), "página privada não redirecionou");
   assert(anonymousFile.status === 401, "arquivo anônimo não retornou 401");
+  assert(anonymousReport.status === 401, "relatório anônimo não retornou 401");
 
   const actionId = await loginActionId();
   const failedLogin = await submitLogin(actionId, `${loginCode}-incorreto`);
@@ -104,6 +200,23 @@ try {
 
   const privatePage = await http("/projetos", { headers: { Cookie: cookie }, redirect: "manual" });
   assert(privatePage.status === 200, `sessão não abriu página privada: ${privatePage.status}`);
+  for (const reportPath of [`/api/reports/projects/${encodeURIComponent(project.id)}`, "/api/reports/global"]) {
+    const response = await http(reportPath, { headers: { Cookie: cookie } });
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const expectedHash = response.headers.get("x-tria-report-sha256");
+    const actualHash = (await import("node:crypto")).createHash("sha256").update(bytes).digest("hex");
+    const semantic = await extractPdfText(bytes);
+    assert(response.status === 200 && bytes.subarray(0, 4).toString() === "%PDF" && expectedHash === actualHash &&
+      response.headers.get("cache-control")?.includes("no-store") && semantic.text.includes("Tabela equivalente ao gráfico"),
+      `relatório privado inválido: ${reportPath}`);
+    if (reportPath.includes("/projects/")) {
+      const normalizedText = semantic.text.replace(/\s+/g, " ");
+      assert(normalizedText.includes("31:01") && normalizedText.includes("123,45") && normalizedText.includes("Histórico de ajustes"),
+        "PDF de projeto não refletiu ajuste PostgreSQL efetivo e histórico");
+    }
+  }
+  const missingReport = await http(`/api/reports/projects/PROJETO-INEXISTENTE`, { headers: { Cookie: cookie } });
+  assert(missingReport.status === 404, "relatório de projeto ausente não retornou 404");
   const initialObjects = (await fs.readdir(path.join(process.env.TRIA_FILE_STORE_PATH ?? "/data/files", "objects"))).length;
   const rejectedUpload = await http(`/api/projects/PROJETO-INEXISTENTE/files`, {
     method: "POST", body: Buffer.from("não persistir"),
@@ -169,8 +282,8 @@ try {
   const [firstPublished] = await admin`SELECT version, prior_publication_id::text, snapshot,
       (SELECT count(*)::int FROM publication_file WHERE publication_id = p.id) links
     FROM publication p WHERE id = ${firstPublicationId}`;
-  assert(firstPublished.version === 1 && firstPublished.links === 1 && firstPublished.snapshot.schemaVersion === "tria-publication-v3" &&
-    firstPublished.snapshot.rendererVersion === "tria-export-v3" && firstPublished.snapshot.files?.length === 1 &&
+  assert(firstPublished.version === 1 && firstPublished.links === 1 && firstPublished.snapshot.schemaVersion === "tria-publication-v4" &&
+    firstPublished.snapshot.rendererVersion === "tria-export-v4" && firstPublished.snapshot.files?.length === 1 &&
     firstPublished.snapshot.files[0].versionId === uploadedV3.versionId && firstPublished.snapshot.files[0].sha256 === uploadedV3.sha256,
     "snapshot v3 não fixou a última versão selecionada");
   const [storedLatest] = await app`SELECT id::text id, object_key::text object_key FROM file_version WHERE id = ${uploadedV3.versionId}`;
@@ -236,7 +349,7 @@ try {
   assert(secondPublish.status === 303 && secondPublicationId, "segunda publicação real falhou");
   const [secondPublished] = await admin`SELECT version, prior_publication_id::text, snapshot FROM publication WHERE id = ${secondPublicationId}`;
   assert(secondPublished.version === 2 && secondPublished.prior_publication_id === firstPublicationId &&
-    secondPublished.snapshot.schemaVersion === "tria-publication-v3" && secondPublished.snapshot.files?.length === 0,
+    secondPublished.snapshot.schemaVersion === "tria-publication-v4" && secondPublished.snapshot.files?.length === 0,
     "segunda publicação não preservou cadeia v3 sem arquivo");
   const deniedPurge = await http(`/api/files/${stored.document_id}/purge`, {
     method: "POST", headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "application/json" },
@@ -302,6 +415,7 @@ try {
   console.log(JSON.stringify({ status: "ok", projects: count, auth: true, throttle: true, upload: true, versions: true,
     explicit_publication_inclusion: true, orphan_reconciliation: true, download_integrity: true, backup_restore: true,
     replacement_volume_denied: true, invalid_volume_readiness: true, quota_fail_closed: true,
+    adjustments: true, concurrency_conflict: true, restoration: true, fiscal_atomicity: true, reports_pdf: true, publication_v4: true,
     corruption_blocked: true, purge_retry: true, purge: true, health: 200 }));
 } finally {
   await Promise.all([app.end(), admin.end()]);
