@@ -1,12 +1,23 @@
 #!/usr/bin/env node
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import { readFile, rename } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import { readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { promisify } from "node:util";
 import postgres from "postgres";
+const execute = promisify(execFile);
 const password = (await readFile(process.env.PGPASSWORD_FILE, "utf8")).trim();
 const sql = postgres({ host: process.env.PGHOST ?? "db", database: process.env.PGDATABASE ?? "tria", username: "tria_migrator", password, max: 1 });
 const base = process.env.APP_BASE_URL ?? "http://app:3000";
 function assert(value, message) { if (!value) throw new Error(message); }
+async function mustReject(operation, message) {
+  let rejected = false;
+  try { await operation(); } catch { rejected = true; }
+  assert(rejected, message);
+}
 async function health(expected) { const response = await fetch(`${base}/api/health`); assert(response.status === expected, `health ${response.status}, esperado ${expected}`); }
 async function authenticatedCookie() {
   const key = await readFile(process.env.TRIA_SESSION_KEY_FILE); const now = Date.now(); const jti = randomUUID();
@@ -35,5 +46,94 @@ try {
   const generic = await fetch(`${base}/api/files/${version.id}/download`, { headers }); assert(generic.status === 404, "endpoint genérico não pode contornar vínculo");
   const audit = await sql`SELECT project_id FROM file_operation_event WHERE operation = 'download' ORDER BY project_id`;
   assert(audit.length === 2 && audit[0].project_id === "synthetic-p1" && audit[1].project_id === "synthetic-p2", "auditoria não preservou projetos");
-  console.log("integração sintética: crash/resume, health e downloads validados");
+
+  const sourceEndpoint = `${base}/api/sources/consolidated`;
+  const sourceHeaders = { Cookie: cookie, Origin: "http://app:3000", "Content-Type": "application/x-unexpected" };
+  const sourcePage = await fetch(`${base}/fontes/base-consolidada`, { headers });
+  assert(sourcePage.status === 200 && (await sourcePage.text()).includes("Base consolidada de aplicação de recursos"), "página da fonte consolidada indisponível");
+  const sourceRoot = process.env.TRIA_FILE_STORE_PATH;
+  const [beforeSource] = await sql`SELECT
+    (SELECT count(*)::int FROM source_file) sources,
+    (SELECT count(*)::int FROM file_document WHERE document_kind = 'source') documents,
+    (SELECT count(*)::int FROM file_reservation WHERE status = 'reserved') reservations,
+    (SELECT used_bytes::text FROM file_store_counter WHERE singleton) used`;
+  const objectsBeforeSource = (await readdir(path.join(sourceRoot, "objects"))).length;
+  for (const invalidName of ["base.xlsm", "base.xlsb", "base.zip", "base.exe", "base.xlsx.csv", "base.csv.exe", "base%00.csv"]) {
+    const rejected = await fetch(sourceEndpoint, { method: "POST", body: Buffer.from("x"),
+      headers: { ...sourceHeaders, "X-TRIA-File-Name": invalidName, "X-TRIA-File-Size": "1" } });
+    assert(rejected.status === 400, `fonte inválida aceita: ${invalidName}`);
+  }
+  const divergent = await fetch(sourceEndpoint, { method: "POST", body: Buffer.from("x"),
+    headers: { ...sourceHeaders, "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": "2" } });
+  const oversized = await fetch(sourceEndpoint, { method: "POST", body: Buffer.from("x"),
+    headers: { ...sourceHeaders, "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": String(50 * 1024 * 1024 + 1) } });
+  assert(divergent.status === 400 && oversized.status === 413, "limite ou divergência da fonte não falhou fechado");
+  const [afterRejectedSource] = await sql`SELECT
+    (SELECT count(*)::int FROM source_file) sources,
+    (SELECT count(*)::int FROM file_document WHERE document_kind = 'source') documents,
+    (SELECT count(*)::int FROM file_reservation WHERE status = 'reserved') reservations,
+    (SELECT used_bytes::text FROM file_store_counter WHERE singleton) used`;
+  assert(JSON.stringify(afterRejectedSource) === JSON.stringify(beforeSource) &&
+    (await readdir(path.join(sourceRoot, "objects"))).length === objectsBeforeSource,
+    "fonte recusada deixou catálogo, reserva, quota ou objeto órfão");
+
+  const sourcePayload = Buffer.from(`fixture-consolidada-opaca-${randomUUID()}\n`);
+  const acceptedSource = await fetch(sourceEndpoint, { method: "POST", body: sourcePayload,
+    headers: { ...sourceHeaders, "X-TRIA-File-Name": "FIXTURE.XLSX", "X-TRIA-File-Size": String(sourcePayload.length) } });
+  const receipt = await acceptedSource.json();
+  assert(acceptedSource.status === 201 && acceptedSource.headers.get("cache-control")?.includes("no-store") &&
+    JSON.stringify(Object.keys(receipt).sort()) === JSON.stringify(["format", "receiptId", "receivedAt", "sizeBytes", "status"].sort()) &&
+    receipt.format === "XLSX" && receipt.sizeBytes === sourcePayload.length && receipt.status === "protected", "recibo da fonte não foi sanitizado");
+  const [storedSource] = await sql`SELECT sf.id::text source_id, sf.source_format, sf.received_by,
+      d.id::text document_id, d.document_kind, d.project_id, d.include_in_publication, d.title,
+      v.id::text version_id, v.object_key::text object_key, v.original_name, v.media_type, v.size_bytes::text, v.sha256,
+      (SELECT count(*)::int FROM source_file_event e WHERE e.source_file_id = sf.id AND e.operation = 'source.file.received.v1') events
+    FROM source_file sf JOIN file_document d ON d.id = sf.document_id JOIN file_version v ON v.id = sf.file_version_id
+    WHERE sf.id = ${receipt.receiptId}::uuid`;
+  const sourceBytes = await readFile(path.join(sourceRoot, "objects", storedSource.object_key));
+  assert(storedSource.source_format === "xlsx" && storedSource.received_by === "Rodrigo" && storedSource.document_kind === "source" &&
+    storedSource.project_id === null && storedSource.include_in_publication === false && storedSource.title === "Base consolidada de aplicação de recursos" &&
+    storedSource.original_name === "FIXTURE.XLSX" && storedSource.media_type === "application/x-unexpected" &&
+    Number(storedSource.size_bytes) === sourcePayload.length && sourceBytes.equals(sourcePayload) &&
+    createHash("sha256").update(sourceBytes).digest("hex") === storedSource.sha256 && storedSource.events === 1,
+    "persistência opaca, hash, evento ou isolamento da fonte divergiram");
+  const sourceDownload = await fetch(`${base}/api/files/${storedSource.version_id}/download`, { headers });
+  const sourcePublication = await fetch(`${base}/api/files/${storedSource.document_id}/publication`, { method: "POST",
+    headers: { ...headers, Origin: "http://app:3000", "Content-Type": "application/json" }, body: JSON.stringify({ include: true }) });
+  assert(sourceDownload.status === 404 && sourcePublication.status === 404 &&
+    !(await (await fetch(`${base}/projetos/synthetic-p1`, { headers })).text()).includes("FIXTURE.XLSX"),
+    "fonte escapou para download, publicação ou projeto");
+  const sourceAcl = await sql`SELECT grantee, privilege_type privilege FROM information_schema.role_table_grants
+    WHERE table_schema = 'public' AND table_name IN ('source_file', 'source_file_event') AND grantee <> 'tria_migrator'
+    ORDER BY table_name, grantee, privilege_type`;
+  assert(sourceAcl.length === 4 && sourceAcl.every((row) => row.grantee === "tria_app" && ["INSERT", "SELECT"].includes(row.privilege)), "ACL mínima da fonte divergiu");
+  await mustReject(() => sql`UPDATE source_file SET received_at = received_at WHERE id = ${receipt.receiptId}::uuid`, "source_file não é append-only");
+  await mustReject(() => sql`DELETE FROM source_file_event WHERE source_file_id = ${receipt.receiptId}::uuid`, "source_file_event não é append-only");
+  await mustReject(() => sql`UPDATE file_document SET updated_at = updated_at WHERE id = ${storedSource.document_id}::uuid`, "documento-pai da fonte é mutável");
+  await mustReject(() => sql`UPDATE file_version SET status = status WHERE id = ${storedSource.version_id}::uuid`, "versão-pai da fonte é mutável");
+  const sourceBackup = await fetch(`${base}/api/backups/files`, { headers });
+  assert(sourceBackup.status === 200 && sourceBackup.headers.get("content-type") === "application/zip" && sourceBackup.body,
+    "backup com a fonte consolidada falhou");
+  const sourceBundle = `/tmp/tria-source-backup-${randomUUID()}.zip`;
+  try {
+    await pipeline(Readable.fromWeb(sourceBackup.body), createWriteStream(sourceBundle, { mode: 0o600 }));
+    await execute(process.execPath, ["scripts/restore-file-backup.mjs", "--verify-only", sourceBundle], { cwd: process.cwd() });
+  } finally { await rm(sourceBundle, { force: true }); }
+
+  const sentinel = path.join(sourceRoot, ".tria-volume"); const sentinelValue = await readFile(sentinel, "utf8");
+  await writeFile(sentinel, `${randomUUID()}\n`);
+  try {
+    const unavailable = await fetch(sourceEndpoint, { method: "POST", body: Buffer.from("x"),
+      headers: { ...sourceHeaders, "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": "1" } });
+    assert(unavailable.status === 503, "fonte não falhou fechado com storage indisponível");
+  } finally { await writeFile(sentinel, sentinelValue); }
+  await health(200);
+  await sql`UPDATE file_store_counter SET reserved_bytes = quota_bytes - used_bytes WHERE singleton`;
+  try {
+    const noQuota = await fetch(sourceEndpoint, { method: "POST", body: Buffer.from("x"),
+      headers: { ...sourceHeaders, "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": "1" } });
+    assert(noQuota.status === 413, "fonte não falhou fechado sem quota");
+  } finally { await sql`UPDATE file_store_counter SET reserved_bytes = 0 WHERE singleton`; }
+  await health(200);
+  console.log("integração sintética: crash/resume, health, downloads e fonte consolidada validados");
 } finally { await sql.end(); }

@@ -12,6 +12,10 @@ const allowedBinaryAssets = new Set([
   "src/app/favicon.ico", "public/file.svg", "public/vercel.svg", "public/next.svg", "public/globe.svg", "public/window.svg",
   "public/report-fonts/noto-sans-latin-400-normal.woff", "public/report-fonts/noto-sans-latin-700-normal.woff",
 ]);
+const allowedSourceCode = new Set([
+  "src/app/api/sources/consolidated/route.ts",
+  "src/app/api/sources/consolidated/route.test.ts",
+]);
 const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /postgres(?:ql)?:\/\/[^\s:@/]+:[^\s@<>{}]+@/i,
@@ -21,6 +25,7 @@ const secretPatterns = [
 export function pathViolation(relative) {
   const clean = relative.replaceAll("\\", "/").replace(/^\.\//, "");
   if (clean.startsWith(".git/") || clean.startsWith("node_modules/") || clean.startsWith(".next/")) return "ignored";
+  if (allowedSourceCode.has(clean)) return null;
   if (forbiddenDirectory.test(clean) && !clean.startsWith("src/app/api/backups/")) return "diretório de dado/secret proibido";
   if (clean.startsWith("db/migrations/") && clean.endsWith(".sql")) return null;
   if ((forbiddenExtension.test(clean) || /\.(ico|woff2?)$/i.test(clean)) && !allowedBinaryAssets.has(clean)) return "tipo binário/dado fora da allowlist";

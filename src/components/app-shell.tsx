@@ -21,6 +21,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <nav aria-label="Navegação principal" className="hidden items-center gap-1 lg:flex">
             <Link href="/" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Meu trabalho</Link>
             <Link href="/projetos" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Projetos</Link>
+            <Link href="/fontes/base-consolidada" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Fontes</Link>
             <Link href="/notas-fiscais" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Notas fiscais</Link>
             <Link href="/publicacoes" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Publicações</Link>
             <a href="/api/backups/files" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Backup</a>
@@ -37,6 +38,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <nav aria-label="Navegação principal móvel" className="flex gap-1 overflow-x-auto border-b border-[var(--border)] bg-white px-5 py-2 lg:hidden">
         <Link href="/" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Meu trabalho</Link>
         <Link href="/projetos" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Projetos</Link>
+        <Link href="/fontes/base-consolidada" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Fontes</Link>
         <Link href="/notas-fiscais" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Notas fiscais</Link>
         <Link href="/publicacoes" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Publicações</Link>
         <a href="/api/backups/files" className="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Backup</a>
