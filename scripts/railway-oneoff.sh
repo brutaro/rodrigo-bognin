@@ -23,8 +23,10 @@ case "$mode" in
     ;;
   import-evidence)
     printf '%s\n' "${TRIA_DB_MIGRATOR_PASSWORD:?Secret do migrador ausente.}" > "$secret_dir/password"
+    printf '%s\n' "${TRIA_FILE_STORE_UUID:?Secret UUID do cofre ausente.}" > "$secret_dir/file-store-uuid"
     chown -R 1001:1001 "$secret_dir"
     export PGUSER=tria_migrator PGPASSWORD_FILE="$secret_dir/password"
+    export TRIA_FILE_STORE_UUID_FILE="$secret_dir/file-store-uuid" TRIA_FILE_STORE_PATH=/data/files
     setpriv --reuid=1001 --regid=1001 --init-groups node scripts/import-evidence-files.mjs --source-dir /data/files/evidence-import
     ;;
   validate)
