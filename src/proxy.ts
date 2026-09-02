@@ -12,9 +12,13 @@ export function isPublicPath(pathname: string) {
 export function isRailwayHealthcheck(input: {
   pathname: string; host: string | null; forwardedHost: string | null; forwardedProtocol: string | null;
 }, runtime = process.env.TRIA_RUNTIME) {
-  const host = input.host?.split(",")[0]?.trim().toLowerCase().replace(/:\d+$/, "") ?? "";
-  return runtime === "railway" && input.pathname === "/api/health" && host === "healthcheck.railway.app" &&
-    !input.forwardedHost && !input.forwardedProtocol;
+  const normalizeHost = (value: string | null) => value?.split(",")[0]?.trim().toLowerCase().replace(/:\d+$/, "") ?? "";
+  const host = normalizeHost(input.host);
+  const forwardedHost = normalizeHost(input.forwardedHost);
+  const forwardedProtocol = input.forwardedProtocol?.split(",")[0]?.trim().toLowerCase() ?? "";
+  const directProbe = !forwardedHost && !forwardedProtocol;
+  const nextProbe = forwardedHost === "healthcheck.railway.app" && forwardedProtocol === "http";
+  return runtime === "railway" && input.pathname === "/api/health" && host === "healthcheck.railway.app" && (directProbe || nextProbe);
 }
 
 export async function proxy(request: NextRequest) {
