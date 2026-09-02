@@ -9,14 +9,26 @@ export function isPublicPath(pathname: string) {
   return pathname === "/entrar" || pathname === "/api/health" || pathname.startsWith("/_next/") || publicAssets.has(pathname);
 }
 
+export function isRailwayHealthcheck(input: {
+  pathname: string; host: string | null; forwardedHost: string | null; forwardedProtocol: string | null;
+}, runtime = process.env.TRIA_RUNTIME) {
+  const host = input.host?.split(",")[0]?.trim().toLowerCase().replace(/:\d+$/, "") ?? "";
+  return runtime === "railway" && input.pathname === "/api/health" && host === "healthcheck.railway.app" &&
+    !input.forwardedHost && !input.forwardedProtocol;
+}
+
 export async function proxy(request: NextRequest) {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProtocol = request.headers.get("x-forwarded-proto");
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+  const railwayHealthcheck = isRailwayHealthcheck({ pathname: request.nextUrl.pathname, host, forwardedHost, forwardedProtocol });
   const boundary = resolveRequestBoundary({
-    host: request.headers.get("host") ?? request.nextUrl.host,
+    host,
     directProtocol: request.nextUrl.protocol,
-    forwardedHost: request.headers.get("x-forwarded-host"),
-    forwardedProtocol: request.headers.get("x-forwarded-proto"),
+    forwardedHost,
+    forwardedProtocol,
   });
-  if (!boundaryAllowsRequest(boundary)) return new NextResponse("TLS obrigatório.", { status: 426 });
+  if (!railwayHealthcheck && !boundaryAllowsRequest(boundary)) return new NextResponse("TLS obrigatório.", { status: 426 });
   if (process.env.TRIA_MAINTENANCE_MODE === "enabled" && request.nextUrl.pathname !== "/api/health" && request.nextUrl.pathname !== "/api/backups/files") {
     return new NextResponse("Manutenção em andamento.", { status: 503, headers: { "Cache-Control": "no-store" } });
   }
