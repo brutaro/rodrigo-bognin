@@ -21,7 +21,7 @@ export default defineRailway(() => {
       TRIA_RUNTIME: "railway",
       TRIA_INSTANCE_NAMESPACE: "tria-production",
       TRIA_TRUST_PROXY: "enabled",
-      TRIA_PUBLIC_HOSTS: preserve(),
+      TRIA_PUBLIC_HOSTS: "tria-production-1710.up.railway.app",
       TRIA_DEMO_WRITES: "enabled",
       PGHOST: databaseService.env.RAILWAY_PRIVATE_DOMAIN,
       PGPORT: "5432",
