@@ -20,13 +20,25 @@ secrets:
 YAML
 compose=(docker compose -p "$namespace" -f "$root/compose.yaml" -f "$root/compose.synthetic.yaml" -f "$temp/secrets.yaml")
 cleanup() {
+  status=$?
+  trap - EXIT INT TERM
+  if [[ $status -ne 0 ]]; then
+    echo "Integração isolada falhou; estado e logs dos serviços:" >&2
+    "${compose[@]}" ps -a >&2 || true
+    "${compose[@]}" logs --no-color db roles migrate file-init >&2 || true
+    df -h / /var/lib/docker 2>/dev/null >&2 || df -h / >&2 || true
+    docker system df >&2 || true
+  fi
   docker rm -f "$namespace-railway" "$namespace-uid" >/dev/null 2>&1 || true
   "${compose[@]}" stop >/dev/null 2>&1 || true; "${compose[@]}" rm -f >/dev/null 2>&1 || true
   for suffix in postgres_data file_data next_cache; do volume="${namespace}_${suffix}"; label="$(docker volume inspect -f '{{ index .Labels "com.docker.compose.project" }}' "$volume" 2>/dev/null || true)"; [[ "$label" == "$namespace" ]] && docker volume rm "$volume" >/dev/null || true; done
   network="${namespace}_default"; label="$(docker network inspect -f '{{ index .Labels "com.docker.compose.project" }}' "$network" 2>/dev/null || true)"; [[ "$label" == "$namespace" ]] && docker network rm "$network" >/dev/null || true
   rm -rf "$temp"
+  exit "$status"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 export COMPOSE_PROJECT_NAME="$namespace" TRIA_SYNTHETIC_EVIDENCE_DIR="$evidence" TRIA_PORT="$((40000 + RANDOM % 20000))"
 cd "$root"
 "${compose[@]}" up -d --build db roles migrate file-init
