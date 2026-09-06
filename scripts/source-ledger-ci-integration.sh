@@ -25,7 +25,9 @@ printf '%s\n' 'story32-app-disposable-02' > "$secrets/app"
 printf '%s\n' 'story32-migrator-disposable-03' > "$secrets/migrator"
 printf '%s\n' 'story32-importer-disposable-04' > "$secrets/importer"
 printf '%s\n' '33333333-3333-4333-8333-333333333333' > "$secrets/uuid"
-chmod 600 "$secrets"/*
+chmod 444 "$secrets"/*
+# Apenas fixtures descartáveis, em diretório temporário privado 0700.
+# PostgreSQL e Node usam UIDs diferentes nos bind mounts Linux.
 secrets_yaml="$temp/secrets.yaml"
 cat > "$secrets_yaml" <<YAML
 secrets:
