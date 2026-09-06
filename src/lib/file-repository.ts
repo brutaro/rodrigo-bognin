@@ -262,12 +262,14 @@ export async function listProjectFiles(projectId: string) {
   return [...documents.values()];
 }
 
-export function currentPublishedFiles(documents: FileDocumentRecord[]) {
-  return documents.filter((document) => document.status === "active" && document.includeInPublication).flatMap((document) => {
-    const version = document.versions.find((item) => item.status === "active");
-    return version ? [{ documentId: document.id, versionId: version.id, title: document.title,
-      version: version.version, originalName: version.originalName, mediaType: version.mediaType,
-      sizeBytes: version.sizeBytes, sha256: version.sha256 }] : [];
+export function currentPublishedFiles(documents: FileDocumentRecord[], proofVersionIds: string[] = []) {
+  const proofs = new Set(proofVersionIds);
+  return [...documents].sort((a,b)=>a.id.localeCompare(b.id)).filter(document => document.status === "active").flatMap(document => {
+    const active = document.versions.filter(item=>item.status === "active").sort((a,b)=>b.version-a.version);
+    return active.filter(version => proofs.has(version.id) || (document.includeInPublication && version.id===active[0]?.id)).map(version => ({
+      documentId:document.id,versionId:version.id,title:document.title,version:version.version,
+      originalName:version.originalName,mediaType:version.mediaType,sizeBytes:version.sizeBytes,sha256:version.sha256,
+    }));
   });
 }
 
@@ -508,6 +510,18 @@ function accessControlIsCanonical(access: Awaited<ReturnType<typeof liveFileAcce
     "source_file_event|tria_app|INSERT|false", "source_file_event|tria_app|SELECT|false",
   ];
   const columnExpected = [
+    // Leitura limitada concedida ao importador pela migração 029.
+    "source_file|id|tria_importer|SELECT|false",
+    "source_file|file_version_id|tria_importer|SELECT|false",
+    "source_file|document_id|tria_importer|SELECT|false",
+    "source_file|source_format|tria_importer|SELECT|false",
+    "file_version|id|tria_importer|SELECT|false",
+    "file_version|document_id|tria_importer|SELECT|false",
+    "file_version|sha256|tria_importer|SELECT|false",
+    "file_version|status|tria_importer|SELECT|false",
+    "file_document|id|tria_importer|SELECT|false",
+    "file_document|document_kind|tria_importer|SELECT|false",
+    "file_document|status|tria_importer|SELECT|false",
     "file_document|created_at|tria_app|INSERT|false", "file_document|id|tria_app|INSERT|false",
     "file_document|document_kind|tria_app|INSERT|false",
     "file_document|include_in_publication|tria_app|INSERT|false", "file_document|project_id|tria_app|INSERT|false",
@@ -567,10 +581,11 @@ export async function canonicalFileCatalog() {
     FROM source_file ORDER BY id`;
   const sourceEvents = await sql`SELECT id::text id, source_file_id::text, operation, byte_count::text, actor, occurred_at::text
     FROM source_file_event ORDER BY id`;
+  const financialProofs = await sql`SELECT entry_id::text,file_version_id::text FROM financial_entry_proof ORDER BY entry_id`;
   const accessControl = await liveFileAccessControl();
   if (!accessControlIsCanonical(accessControl)) throw new FileRepositoryError("ACL do cofre divergiu.", "unavailable");
   return { format: "tria-file-catalog-v1", accessControl,
-    quota: counter, documents, versions, publications, publicationLinks: links, sourceFiles, sourceEvents };
+    quota: counter, documents, versions, publications, publicationLinks: links, sourceFiles, sourceEvents, financialProofs };
 }
 
 export async function activeObjectRecords() {

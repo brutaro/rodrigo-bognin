@@ -1,3 +1,6 @@
+import type {Contract} from './contract-domain';
+import { costConfirmationLabel, type CostConfirmation, type CashResult } from "./cash-domain";
+import { reimbursementLabel, type ReimbursementStatus } from "./reimbursement-status";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -7,6 +10,7 @@ export const manualFinancialKinds = [
   "Custo ou valor do projeto",
   "Nota ou cobrança",
   "Pagamento",
+  "Reembolso",
   "Valor informado",
 ] as const;
 export type ManualFinancialKind = (typeof manualFinancialKinds)[number];
@@ -17,6 +21,9 @@ export const financialOrigins = [
 export type FinancialOrigin = (typeof financialOrigins)[number];
 
 export type ManualFinancialEntry = {
+  confirmation?: CostConfirmation;
+  reimbursement?: ReimbursementStatus;
+  proofVersionId?: string;
   id: string;
   kind: ManualFinancialKind;
   description: string;
@@ -36,6 +43,8 @@ export type HistoryEvent = {
 };
 
 export type DemoProjectDraft = {
+  cash?: CashResult;
+  contract?: Contract;
   narrative: string;
   revision?: string;
   manualFinancialEntries: ManualFinancialEntry[];
@@ -47,10 +56,14 @@ export type FinancialGroup =
   | "project_measurement"
   | "invoice_or_charge"
   | "payment"
+  | "reimbursement"
   | "reported_value"
   | "financial_reference";
 
 export type PublishedFinancialEntry = {
+  confirmation?: CostConfirmation;
+  reimbursement?: ReimbursementStatus;
+  proofVersionId?: string;
   id: string;
   sourceType: "Referência importada" | "Cadastro manual";
   financialGroup: FinancialGroup;
@@ -99,6 +112,8 @@ export type PublishedFile = {
 };
 
 export type DemoPublication = {
+  cash?: CashResult;
+  contract?: Contract;
   id: string;
   projectId: string;
   version: number;
@@ -350,6 +365,7 @@ function publicationContent(
   files?: PublishedFile[],
   snapshotV4 = false,
 ): Omit<DemoPublication, "id" | "version" | "priorPublicationId" | "createdAt" | "createdBy" | "contentHash" | "recordHash" | "review"> {
+  if (draft.manualFinancialEntries.some(entry=>entry.proofVersionId && !files?.some(file=>file.versionId===entry.proofVersionId))) throw new Error("Comprovante vinculado ausente dos arquivos da publicação.");
   const imported: PublishedFinancialEntry[] = project.financialReferences.map((reference) => ({
     id: reference.id,
     sourceType: "Referência importada",
@@ -388,7 +404,9 @@ function publicationContent(
     id: entry.id,
     sourceType: "Cadastro manual",
     financialGroup:
-      entry.kind === "Pagamento"
+      entry.kind === "Reembolso"
+        ? "reimbursement"
+        : entry.kind === "Pagamento"
         ? "payment"
         : entry.kind === "Nota ou cobrança"
           ? "invoice_or_charge"
@@ -406,11 +424,16 @@ function publicationContent(
     currency: "BRL",
     origin: entry.origin,
     relation: "Sem relação confirmada",
-    payment: entry.kind === "Pagamento" ? "Informado" : "Não informado",
+    payment: entry.confirmation ? costConfirmationLabel(entry.kind,entry.confirmation) : entry.reimbursement ? reimbursementLabel(entry.reimbursement) : entry.kind === "Pagamento" ? "Informado" : "Não informado",
+    ...(entry.confirmation ? {confirmation:structuredClone(entry.confirmation)} : {}),
+    ...(entry.reimbursement ? {reimbursement:structuredClone(entry.reimbursement)} : {}),
     documentState: entry.documentState,
+    ...(entry.proofVersionId ? {proofVersionId:entry.proofVersionId} : {}),
     recordedAt: entry.createdAt,
   }));
   return {
+    ...(draft.contract ? {contract:structuredClone(draft.contract)} : {}),
+    ...(draft.cash ? {cash:structuredClone(draft.cash)} : {}),
     projectId: project.id,
     dataClassification,
     schemaVersion: snapshotV4 ? "tria-publication-v4" : files ? "tria-publication-v3" : "tria-publication-v2",
@@ -459,6 +482,8 @@ function computeLegacyPublicationContentHash(content: PublicationContent) {
 
 function storedPublicationContent(publication: DemoPublication): PublicationContent {
   return {
+    ...(publication.contract ? {contract:publication.contract} : {}),
+    ...(publication.cash ? {cash:publication.cash} : {}),
     projectId: publication.projectId,
     dataClassification: publication.dataClassification,
     schemaVersion: publication.schemaVersion,
@@ -650,9 +675,10 @@ export function parseBrlToCents(input: string): string | null {
 }
 
 export function formatBrlFromCents(amountCents: string): string {
-  const cents = BigInt(amountCents);
+  const signed = BigInt(amountCents);
+  const cents = signed < 0n ? -signed : signed;
   const integer = cents / BigInt(100);
   const decimal = (cents % BigInt(100)).toString().padStart(2, "0");
   const grouped = integer.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `R$ ${grouped},${decimal}`;
+  return `${signed < 0n ? "−" : ""}R$ ${grouped},${decimal}`;
 }

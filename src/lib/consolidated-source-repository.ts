@@ -61,7 +61,12 @@ export function validateConsolidatedSourceUploadMetadata(input: {
   };
 }
 
+export function realSourceUploadEnabled() {
+  return process.env.TRIA_RUNTIME !== "railway" && process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD === "local-owner";
+}
+
 export function consolidatedSourceUploadEnabled() {
+  if (realSourceUploadEnabled()) return true;
   return process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD === "synthetic-fixtures-only" &&
     process.env.TRIA_RUNTIME !== "railway" &&
     process.env.TRIA_INTEGRATION_ISOLATED === "confirmed" &&
@@ -117,6 +122,10 @@ export async function receiveConsolidatedSource(input: {
       await tx`INSERT INTO source_file_event
         (id, source_file_id, operation, byte_count, actor, occurred_at)
         VALUES (${randomUUID()}, ${sourceId}, 'source.file.received.v1', ${artifact.size}, 'Rodrigo', ${artifact.createdAt})`;
+      if (!realSourceUploadEnabled()) {
+      await tx`SELECT set_config('tria.synthetic_namespace', ${process.env.TRIA_INTEGRATION_NAMESPACE ?? ""}, true)`;
+      await tx`SELECT attest_new_synthetic_receipt(${sourceId}::uuid)`;
+      }
       return sanitizedConsolidatedSourceReceipt({
         receiptId: sourceId,
         format: metadata.format,

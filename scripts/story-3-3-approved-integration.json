@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "description": "Conteúdo final aprovado para os cinco pontos de integração da Story 3.3; qualquer alteração adicional falha G-33-03.",
+  "files": {
+    "package.json": {
+      "sha256": "eecab7ebe4434c86093852552d88ffc1a56e00960745f4605a3352ac5c753732",
+      "bytes": 1773
+    },
+    "scripts/test-integration.mjs": {
+      "sha256": "d11526414cc4b1d755eee411032ae352e4869171167ef9c84c12d1a1e68bf9df",
+      "bytes": 658
+    },
+    "scripts/validate-database.mjs": {
+      "sha256": "b0f4a49ba9863c271b89bf70a72f20f3257e3e43612d319e5e5986a94613619b",
+      "bytes": 16474
+    },
+    "src/app/fontes/base-consolidada/actions.ts": {
+      "sha256": "f8ae2726e6ac7ab2df161421cb1370fbca747f5b01133be6bf6da7b0300b2e5b",
+      "bytes": 16044
+    },
+    "src/components/consolidated-source-preparation.tsx": {
+      "sha256": "2b455bfe5d749d5f7b489753633832bd9968d363cb394809c41d9505c1050d8b",
+      "bytes": 16946
+    }
+  }
+}

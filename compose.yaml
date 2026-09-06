@@ -185,6 +185,8 @@ services:
       PGUSER: tria_app
       PGPASSWORD_FILE: /run/secrets/db_app_password
       PGPOOL_MAX: "5"
+      TRIA_RUNTIME: local
+      TRIA_CONSOLIDATED_SOURCE_UPLOAD: local-owner
       TRIA_DEMO_WRITES: enabled
       TRIA_LOGIN_CODE_FILE: /run/secrets/tria_login_code
       TRIA_SESSION_KEY_FILE: /run/secrets/tria_session_key

@@ -22,3 +22,11 @@ describe("mutex do cofre", () => {
     expect(releaseConnection).toHaveBeenCalledOnce();
   });
 });
+
+import { currentPublishedFiles } from "./file-repository";
+it("mantém a versão do comprovante mesmo quando há upload mais recente", () => {
+  const version = {id:"v1",documentId:"document",version:1,objectKey:"object",originalName:"comprovante.pdf",mediaType:"application/pdf",sizeBytes:10,sha256:"a".repeat(64),status:"active" as const,createdAt:"2026-09-05"};
+  const document = {id:"document",projectId:"project",title:"Comprovante",status:"active" as const,includeInPublication:false,createdAt:"2026-09-05",updatedAt:"2026-09-05",versions:[{...version,id:"v2",version:2},version]};
+  expect(currentPublishedFiles([document],["v1"]).map(file=>file.versionId)).toEqual(["v1"]);
+  expect(currentPublishedFiles([{...document,includeInPublication:true}],["v1"]).map(file=>file.versionId)).toEqual(["v2","v1"]);
+});

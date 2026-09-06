@@ -1,3 +1,13 @@
+import {ContractEditor} from "@/components/contract-editor";
+import {ContractSummary} from "@/components/contract-summary";
+import { ReimbursementEditor } from "@/components/reimbursement-status";
+import { FinancialProof } from "@/components/financial-proof";
+import { CashSummary } from "@/components/cash-summary";
+import { CashReviewEditor } from "@/components/cash-review";
+import { CostConfirmationEditor } from "@/components/cost-confirmation";
+import { NarrativeEditor } from "@/components/narrative-editor";
+import { ProjectSettings } from "@/components/project-settings";
+import { ResourceSummary } from "@/components/resource-summary";
 import { requireAuthenticatedPage } from "@/lib/auth";
 import { randomUUID } from "node:crypto";
 import Link from "next/link";
@@ -20,7 +30,7 @@ import {
   listProjectPublications,
   readProjectDraft,
 } from "@/lib/workspace";
-import { addFinancialEntryAction, restoreActivityAction, saveActivityAdjustmentAction, saveNarrativeAction } from "./actions";
+import { addFinancialEntryAction, restoreActivityAction, saveActivityAdjustmentAction, editProjectAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +52,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const notice = typeof query.notice === "string" ? query.notice : undefined;
   const draft = await readProjectDraft(project.id);
   const storedFiles = localData ? await listProjectFiles(project.id) : [];
+  const proofFiles = storedFiles.filter(file=>file.status==="active").flatMap(file=>file.versions.filter(version=>version.status==="active").map(version=>({id:version.id,label:`${file.title} · V${version.version}`})));
   const latestPublication = (await listProjectPublications(project.id))[0];
-  const saveNarrative = saveNarrativeAction.bind(null, project.id);
   const addFinancialEntry = addFinancialEntryAction.bind(null, project.id);
   const financialRequestId = randomUUID();
   const activityPage = normalizeActivityPage(typeof query.activityPage === "string" ? query.activityPage : undefined, project.activities.length);
@@ -79,7 +89,12 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               <Link href={`/projetos/${project.id}/conferir`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-white hover:bg-blue-900">Ver como ficará</Link>
             </div>
           </div>
+          {localData ? <ProjectSettings title={project.name} start={project.periodStart} end={project.periodEnd} archived={Boolean(project.archived)} revision={project.metadataRevision ?? "0"} action={editProjectAction.bind(null, project.id)} /> : null}
         </section>
+
+        <ResourceSummary projectTitle={project.sourceName ?? project.name} />
+        <ContractSummary contract={draft.contract} /><ContractEditor key={draft.contract?.revision??"0"} projectId={project.id} contract={draft.contract} />
+        {draft.cash && <><CashSummary result={draft.cash} /><CashReviewEditor key={`${draft.cash.sourceHash}-${draft.cash.review?.revision ?? "0"}`} projectId={project.id} basisHash={draft.cash.sourceHash} review={draft.cash.review} /></>}
 
         <div className="mt-6"><Notice code={notice} /></div>
 
@@ -88,26 +103,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
             <section aria-labelledby="narrative-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
               <div className="border-b border-[var(--border)] p-5">
                 <h2 id="narrative-title" className="text-lg font-bold text-[var(--ink)]">O que foi feito</h2>
-                <p className="mt-1 text-sm text-[var(--ink-muted)]">Escreva em primeira pessoa. Salvar cria um registro no histórico {localData ? "local" : "demonstrativo"}.</p>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">Escreva em primeira pessoa. O texto é salvo automaticamente após uma pausa na digitação.</p>
               </div>
-              <form action={saveNarrative} className="p-5">
-                <input type="hidden" name="expectedRevision" value={draft.revision ?? "0"} />
-                <label htmlFor="narrative" className="mb-2 block text-sm font-semibold text-[var(--ink)]">Narrativa do projeto</label>
-                <textarea
-                  id="narrative"
-                  name="narrative"
-                  defaultValue={draft.narrative}
-                  minLength={10}
-                  maxLength={20_000}
-                  rows={9}
-                  required
-                  className="w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm leading-6 text-slate-800 outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-blue-100"
-                />
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-slate-500">{localData ? "Dados privados locais. Revise antes de publicar." : "Dados fictícios. Nenhum texto real foi carregado."}</p>
-                  <SubmitButton idleLabel="Salvar narrativa" pendingLabel="Salvando…" />
-                </div>
-              </form>
+              <NarrativeEditor key={project.id} projectId={project.id} initialText={draft.narrative} initialRevision={draft.revision ?? "0"} />
             </section>
 
             <section aria-labelledby="activities-title" className="rounded-2xl border border-[var(--border)] bg-white shadow-sm">
@@ -143,11 +141,14 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                   </article>
                 ))}
                 {draft.manualFinancialEntries.map((entry) => (
-                  <article key={entry.id} className="border-l-4 border-l-blue-400 p-5">
+                  <article key={entry.id} className="border-l-4 border-l-[#CB5C2B] p-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                       <div><p className="text-xs font-bold uppercase tracking-wide text-blue-800">{entry.kind}</p><h3 className="mt-1 font-semibold text-[var(--ink)]">{entry.description}</h3><p className="mt-1 text-xs text-slate-500">{entry.origin} · {entry.documentState}</p></div>
                       <p className="text-lg font-bold text-[var(--ink)]">{formatBrlFromCents(entry.amountCents)}</p>
                     </div>
+                    {localData && ["Custo ou valor do projeto","Pagamento"].includes(entry.kind) && <CostConfirmationEditor key={`${entry.id}-cost-${entry.confirmation?.revision ?? "0"}`} projectId={project.id} entryId={entry.id} kind={entry.kind} value={entry.confirmation} costs={draft.manualFinancialEntries.filter(e=>e.kind==="Custo ou valor do projeto" && e.confirmation?.status==="confirmado").map(e=>({id:e.id,description:e.description,amountCents:e.amountCents}))} />}
+                    {localData && entry.kind === "Reembolso" && <ReimbursementEditor key={`${entry.id}-reembolso-${entry.reimbursement?.revision ?? "0"}`} projectId={project.id} entryId={entry.id} value={entry.reimbursement} />}
+                    {localData ? <FinancialProof key={`${entry.id}-${entry.proofVersionId ?? "none"}`} projectId={project.id} entryId={entry.id} versionId={entry.proofVersionId} files={proofFiles} /> : null}
                   </article>
                 ))}
                 {!project.financialReferences.length && !draft.manualFinancialEntries.length ? <p className="p-5 text-sm text-[var(--ink-muted)]">Nenhum valor registrado.</p> : null}
@@ -174,7 +175,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                       {financialOrigins.map((origin) => <option key={origin}>{origin}</option>)}
                     </select>
                   </label>
-                  <p className="text-xs leading-5 text-slate-500 sm:col-span-2">Até o upload ser implementado, qualquer pagamento permanece informado sem arquivo associado.</p>
+                  <p className="text-xs leading-5 text-slate-500 sm:col-span-2">Após registrar, confirme o que o valor representa e vincule o comprovante. Para pagamento parcial, registre somente o valor efetivamente pago nesta parcela.</p>
                   <div className="sm:col-span-2 sm:justify-self-end"><SubmitButton idleLabel="Registrar valor" pendingLabel="Registrando…" /></div>
                 </form>
               </details>
@@ -182,7 +183,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           </div>
 
           <aside className="space-y-6">
-            {localData ? <ProjectFiles projectId={project.id} documents={storedFiles} /> : (
+            {localData ? <ProjectFiles projectId={project.id} documents={storedFiles} proofVersionIds={draft.manualFinancialEntries.flatMap(entry=>entry.proofVersionId ? [entry.proofVersionId] : [])} /> : (
               <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">O cofre exige PostgreSQL e o volume local íntegro.</section>
             )}
 

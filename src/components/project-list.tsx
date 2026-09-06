@@ -6,16 +6,17 @@ import type { ProjectSummary } from "@/lib/project-repository";
 import { StatusBadge } from "@/components/status-badge";
 
 export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
+  const [showArchived, setShowArchived] = useState(false);
   const [query, setQuery] = useState("");
   const normalized = query.trim().toLocaleLowerCase("pt-BR");
   const filtered = useMemo(
     () =>
-      projects.filter((project) =>
+      projects.filter(project => Boolean(project.archived) === showArchived).filter((project) =>
         `${project.name} ${project.period} ${project.status}`
           .toLocaleLowerCase("pt-BR")
           .includes(normalized),
       ),
-    [normalized, projects],
+    [normalized, projects, showArchived],
   );
 
   return (
@@ -37,6 +38,7 @@ export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
           />
         </label>
       </div>
+      <label className="flex items-center gap-2 border-b border-[var(--border)] px-5 py-3 text-sm"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} /> Mostrar arquivados ({projects.filter(project => project.archived).length})</label>
       {filtered.length ? (
         <ul className="divide-y divide-[var(--border)]">
           {filtered.map((project) => (

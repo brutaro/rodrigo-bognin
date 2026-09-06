@@ -1,3 +1,5 @@
+import { calculateCash } from "./cash-domain";
+import { toPublicPublicationV4, buildPublicationCsvV4, buildPublicationHtmlV4 } from "./demo-publication-export-v4";
 import { describe, expect, it } from "vitest";
 import { getDemoProject } from "./demo-data";
 import {
@@ -62,6 +64,54 @@ describe("formatBrlFromCents", () => {
 describe("snapshot de publicação", () => {
   const project = getDemoProject("demonstracao-continuidade");
   if (!project) throw new Error("Fixture ausente.");
+
+  it("congela caixa e conferência nas exportações e rejeita alteração do resultado publicado", () => {
+    const source=draft();source.manualFinancialEntries=[];
+    source.cash=calculateCash([],{revision:"1",basisHash:"basis",cutoffDate:"2026-09-05",costs:"sem_movimento",payments:"sem_movimento",reimbursements:"sem_movimento",reason:"Sem movimentos declarado",actor:"Rodrigo",createdAt:"2026-09-05T12:00:00Z"},"basis");
+    const snapshot=buildPublicationSnapshotV4(project,source,1,null,"2026-09-05T12:00:00Z");
+    expect(snapshot.cash?.resultCents).toBe("0");
+    expect(buildPublicationCsvV4(snapshot)).toContain("Equilíbrio de caixa");
+    expect(buildPublicationHtmlV4(snapshot)).toContain("Cobertura do valor pago");
+    source.cash.resultCents="999";expect(snapshot.cash?.resultCents).toBe("0");
+    expect(verifyDemoPublicationIntegrity(snapshot)).toBeTruthy();
+    snapshot.cash!.resultCents="999";expect(()=>verifyDemoPublicationIntegrity(snapshot)).toThrow(/integridade/);
+  });
+
+  it("congela a situação explícita do reembolso e distingue pendente de recebido", () => {
+    const source=draft();const entry=source.manualFinancialEntries[0];entry.kind="Reembolso";
+    const publish=()=>buildPublicationSnapshotV4(project,source,1,null,"2026-09-05T12:00:00Z");
+    const unknown=publish();expect(unknown.financialEntries.at(-1)?.payment).toBe("Não informado");
+    entry.reimbursement={status:"sinalizado_pendente",receivedOn:null,revision:"1"};
+    const pending=publish();expect(pending.financialEntries.at(-1)?.payment).toBe("Aprovado · a receber");
+    entry.reimbursement={status:"recebido_confirmado",receivedOn:"2026-09-05",revision:"2"};
+    const received=publish();expect(received.contentHash).not.toBe(pending.contentHash);
+    expect(buildPublicationCsvV4(received)).toContain("Recebido confirmado · 05/09/2026");
+    expect(buildPublicationHtmlV4(received)).toContain("Recebido confirmado · 05/09/2026");
+    expect(pending.financialEntries.at(-1)?.reimbursement?.status).toBe("sinalizado_pendente");
+    expect(verifyDemoPublicationIntegrity(pending)).toBeTruthy();
+  });
+
+  it("congela comprovante com referência pública e recusa arquivo ausente", () => {
+    const source=draft();source.manualFinancialEntries[0].proofVersionId="file-version";
+    source.manualFinancialEntries[0].documentState="Com arquivo associado";
+    const files=[{documentId:"document",versionId:"file-version",title:"Comprovante",version:1,originalName:"comprovante.pdf",mediaType:"application/pdf",sizeBytes:10,sha256:"a".repeat(64)}];
+    const snapshot=buildPublicationSnapshotV4(project,source,1,null,"2026-09-05T12:00:00Z","publication","Rodrigo",files);
+    expect(toPublicPublicationV4(snapshot).financialEntries.at(-1)?.documentState).toContain("ARQ-001");
+    expect(buildPublicationCsvV4(snapshot)).toContain("ARQ-001");
+    expect(buildPublicationHtmlV4(snapshot)).toContain("Com arquivo associado · ARQ-001");
+    delete source.manualFinancialEntries[0].proofVersionId;
+    expect(snapshot.financialEntries.at(-1)?.proofVersionId).toBe("file-version");
+    source.manualFinancialEntries[0].proofVersionId="missing";
+    expect(()=>buildPublicationSnapshotV4(project,source,1,null,"2026-09-05T12:00:00Z","publication","Rodrigo",files)).toThrow(/Comprovante/);
+  });
+
+  it("mantém reembolso em grupo próprio na publicação", () => {
+    const source = draft();
+    source.manualFinancialEntries[0].kind = "Reembolso";
+    const snapshot = buildPublicationSnapshot(project, source, 1, null, "2026-09-05T12:00:00Z", "test-reimbursement");
+    expect(snapshot.financialEntries.at(-1)?.financialGroup).toBe("reimbursement");
+    expect(snapshot.financialEntries.at(-1)?.kind).toBe("Reembolso");
+  });
 
   it("congela conteúdo, corte e grupos financeiros", () => {
     const source = draft();

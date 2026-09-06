@@ -93,12 +93,26 @@ function canonicalAccessControl(access) {
     "file_version|tria_migrator", "publication|tria_migrator", "publication_file|tria_migrator",
   ]) && exactRows(observed?.tableAcl, ["object_name", "grantee", "privilege", "grantable"], currentTable) &&
     exactRows(observed?.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], [...inserts, ...updates]);
+  const importerReads = [
+    "source_file|id|tria_importer|SELECT|false",
+    "source_file|file_version_id|tria_importer|SELECT|false",
+    "source_file|document_id|tria_importer|SELECT|false",
+    "source_file|source_format|tria_importer|SELECT|false",
+    "file_version|id|tria_importer|SELECT|false",
+    "file_version|document_id|tria_importer|SELECT|false",
+    "file_version|sha256|tria_importer|SELECT|false",
+    "file_version|status|tria_importer|SELECT|false",
+    "file_document|id|tria_importer|SELECT|false",
+    "file_document|document_kind|tria_importer|SELECT|false",
+    "file_document|status|tria_importer|SELECT|false",
+  ];
   const sourceShape = exactRows(tableOwners, ["tablename", "tableowner"], [
     "file_document|tria_migrator", "file_operation_event|tria_migrator", "file_reservation|tria_migrator", "file_store_counter|tria_migrator",
     "file_version|tria_migrator", "publication|tria_migrator", "publication_file|tria_migrator",
     "source_file|tria_migrator", "source_file_event|tria_migrator",
   ]) && exactRows(observed?.tableAcl, ["object_name", "grantee", "privilege", "grantable"], sourceTable) &&
-    exactRows(observed?.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], [...sourceInserts, ...updates]);
+    (exactRows(observed?.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], [...sourceInserts, ...updates]) ||
+    exactRows(observed?.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], [...sourceInserts, ...updates, ...importerReads]));
   return access?.owner === "Rodrigo" && access?.policy === "owner-only" && access?.runtimeRole === "tria_app" &&
     access?.directPublicationDelete === false && access?.purgeFunction === "complete_file_purge(p_document_id uuid)" &&
     (legacyShape || preSourceShape || sourceShape) &&
@@ -142,20 +156,23 @@ function normalizeAndValidateShape(model) {
       if ((!legacySafeName && (!match || !evidenceMedia.has(match[1]) || evidenceMedia.get(match[1]) !== version.media_type)) || version.version !== 1 ||
           !/^[0-9a-f]{64}$/.test(version.evidence_asset_id ?? "") || version.sha256 !== version.evidence_asset_id) throw new Error("Shape, nome ou mídia da evidência inválido.");
     } else {
-      if (document.title !== "Base consolidada de aplicação de recursos" || document.project_id !== null ||
+      if (!["Base consolidada de aplicação de recursos", "Nota fiscal em PDF", "Nota fiscal em XML"].includes(document.title) || document.project_id !== null ||
           document.include_in_publication !== false || document.status !== "active" || owned.length !== 1 || sources.length !== 1) {
         throw new Error("Shape de documento-fonte inválido.");
       }
       const version = owned[0];
       const source = sources[0];
       const events = sourceEvents.filter((item) => item.source_file_id === source.id);
-      const match = /^[^./\\\0]+\.(xls|xlsx|csv)$/i.exec(version.original_name ?? "");
-      if (!match || source.file_version_id !== version.id || source.source_format !== match[1].toLowerCase() ||
+      const match = /^.+\.(xls|xlsx|csv|pdf|xml)$/i.exec(version.original_name ?? "");
+      const expectedTitle = source.source_format === "pdf" ? "Nota fiscal em PDF" : source.source_format === "xml" ? "Nota fiscal em XML" : "Base consolidada de aplicação de recursos";
+      const limit = source.source_format === "pdf" ? 10*1024*1024 : source.source_format === "xml" ? 2*1024*1024 : 50*1024*1024;
+      if (!match || document.title !== expectedTitle || /[\\/\u0000-\u001f\u007f]/.test(version.original_name) || version.original_name.length > 255 || version.original_name.trim() !== version.original_name ||
+          (source.source_format === "pdf" && version.media_type !== "application/pdf") || (source.source_format === "xml" && version.media_type !== "application/xml") || source.file_version_id !== version.id || source.source_format !== match[1].toLowerCase() ||
           source.received_by !== "Rodrigo" || source.received_at !== document.created_at || source.received_at !== document.updated_at ||
           source.received_at !== version.created_at || version.version !== 1 || version.status !== "active" || version.evidence_asset_id !== null ||
           events.length !== 1 || events[0].operation !== "source.file.received.v1" || events[0].actor !== "Rodrigo" ||
           events[0].occurred_at !== source.received_at || String(events[0].byte_count) !== String(version.size_bytes) ||
-          !Number.isSafeInteger(Number(version.size_bytes)) || Number(version.size_bytes) <= 0 || Number(version.size_bytes) > 50 * 1024 * 1024) {
+          !Number.isSafeInteger(Number(version.size_bytes)) || Number(version.size_bytes) <= 0 || Number(version.size_bytes) > limit) {
         throw new Error("Shape, recibo ou versão da fonte consolidada inválido.");
       }
     }
@@ -165,7 +182,9 @@ function normalizeAndValidateShape(model) {
   const versionIds = new Set(versions.map((item) => item.id));
   if (sourceFiles.some((item) => !documentIds.has(item.document_id) || !versionIds.has(item.file_version_id)) ||
       sourceEvents.some((item) => !sourceIds.has(item.source_file_id))) throw new Error("Referência órfã na fonte consolidada.");
-  return { ...model, documents, versions, sourceFiles, sourceEvents };
+  const financialProofs = model.financialProofs ?? [];
+  if (!Array.isArray(financialProofs) || new Set(financialProofs.map(item=>item.entry_id)).size !== financialProofs.length || financialProofs.some(item=>!versionIds.has(item.file_version_id) || !/^[0-9a-f-]{36}$/i.test(item.entry_id))) throw new Error("Comprovantes financeiros inválidos.");
+  return { ...model, documents, versions, sourceFiles, sourceEvents, financialProofs };
 }
 
 const zip = await openZip(path.resolve(bundle));

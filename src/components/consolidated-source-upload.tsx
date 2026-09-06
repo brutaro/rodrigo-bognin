@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 export type ConsolidatedSourceReceipt = {
   receiptId: string;
@@ -49,10 +49,20 @@ function formatBytes(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "unit", unit: "byte", unitDisplay: "narrow" }).format(value);
 }
 
-export function ConsolidatedSourceUpload({ enabled }: { enabled: boolean }) {
+export function ConsolidatedSourceUpload({ enabled, real = false, title = "Base consolidada de aplicação de recursos", receiptKey = "tria-source-receipt", onProtected }: { enabled: boolean; real?: boolean; title?: string; receiptKey?: string; onProtected?: (receipt: ConsolidatedSourceReceipt | undefined) => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [receipt, setReceipt] = useState<ConsolidatedSourceReceipt | null>(null);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const saved = sessionStorage.getItem(receiptKey);
+        if (saved) setReceipt(parseConsolidatedSourceReceipt(JSON.parse(saved)) ?? null);
+      } catch { setMessage("Armazenamento local indisponível; o recibo será mantido nesta página."); }
+    });
+  }, [receiptKey]);
+  useEffect(() => { if (receipt) onProtected?.(receipt); }, [onProtected, receipt]);
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,6 +72,8 @@ export function ConsolidatedSourceUpload({ enabled }: { enabled: boolean }) {
     if (file.size > limitBytes) return setMessage("O arquivo excede o limite de 50 MiB.");
     setBusy(true);
     setReceipt(null);
+    onProtected?.(undefined);
+    try { sessionStorage.removeItem(receiptKey); } catch {}
     setMessage("Recebendo, preservando e verificando os bytes…");
     try {
       const uploadRequest = buildConsolidatedSourceUploadRequest(file);
@@ -71,6 +83,7 @@ export function ConsolidatedSourceUpload({ enabled }: { enabled: boolean }) {
       const parsedReceipt = parseConsolidatedSourceReceipt(result);
       if (!parsedReceipt) throw new Error("O recibo retornado é inválido.");
       setReceipt(parsedReceipt);
+      try { sessionStorage.setItem(receiptKey, JSON.stringify(parsedReceipt)); } catch { /* o recibo em memória continua válido nesta sessão */ }
       setMessage("Fonte recebida e protegida.");
       form.reset();
     } catch (error) {
@@ -86,8 +99,8 @@ export function ConsolidatedSourceUpload({ enabled }: { enabled: boolean }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-[var(--brand)]">Fonte protegida</p>
-            <h2 id="consolidated-source-title" className="mt-2 text-xl font-bold text-[var(--ink)]">Base consolidada de aplicação de recursos</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">Receba uma fixture XLS, XLSX ou CSV sem abrir, interpretar ou executar seu conteúdo.</p>
+            <h2 id="consolidated-source-title" className="mt-2 text-xl font-bold text-[var(--ink)]">{title}</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--ink-muted)]">{real ? "Envie a planilha XLSX ou CSV. O original será preservado antes da leitura e da conferência." : "Receba uma fixture XLS, XLSX ou CSV sem abrir, interpretar ou executar seu conteúdo."}</p>
           </div>
           <div className="group relative shrink-0">
             <button type="button" aria-label="Como a fonte é protegida" aria-describedby="consolidated-source-help" className="grid size-9 place-items-center rounded-full border border-slate-300 text-sm font-bold text-slate-700">?</button>
@@ -119,10 +132,10 @@ export function ConsolidatedSourceUpload({ enabled }: { enabled: boolean }) {
 
       <form onSubmit={upload} className="grid gap-4 p-5 sm:p-6">
         <label className="text-sm font-semibold text-[var(--ink)]">
-          Arquivo sintético
-          <input name="file" type="file" required disabled={!enabled || busy} accept=".xls,.xlsx,.csv" className="mt-2 block w-full rounded-xl border border-slate-300 p-3 text-sm font-normal disabled:cursor-not-allowed disabled:bg-slate-100" />
+          {real ? title : "Arquivo sintético"}
+          <input name="file" type="file" required disabled={!enabled || busy} accept={real ? ".xlsx,.csv" : ".xls,.xlsx,.csv"} className="mt-2 block w-full rounded-xl border border-slate-300 p-3 text-sm font-normal disabled:cursor-not-allowed disabled:bg-slate-100" />
         </label>
-        <p className="text-xs leading-5 text-[var(--ink-muted)]">Até 50 MiB. O formato é definido pela extensão; o MIME é apenas um indício.</p>
+        <p className="text-xs leading-5 text-[var(--ink-muted)]">Até 50 MiB. XLS antigo: salve como XLSX ou CSV. O original é privado e não entra nas publicações.</p>
         <button disabled={!enabled || busy} className="rounded-xl bg-[var(--brand)] px-4 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">
           {busy ? "Protegendo…" : "Receber e proteger"}
         </button>

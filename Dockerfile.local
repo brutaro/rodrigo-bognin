@@ -1,0 +1,12 @@
+# Ambiente local: reutiliza as dependências Linux já instaladas na imagem tools.
+# A imagem de produção continua definida no Dockerfile.
+FROM tria-plano-b-tools:local AS tools
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends util-linux tesseract-ocr tesseract-ocr-por poppler-utils && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --chown=node:node . .
+USER node
+FROM tools AS runner
+RUN npm run build && mkdir -p .next/standalone/public .next/standalone/.next/static && cp -R public/. .next/standalone/public/ && cp -R .next/static/. .next/standalone/.next/static/
+ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000
+CMD ["node", ".next/standalone/server.js"]

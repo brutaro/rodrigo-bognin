@@ -7,7 +7,7 @@ import { relationLabel } from "./project-semantics";
 
 export type ProjectSummary = {
   id: string; name: string; period: string; status: ProjectStatus; narrative: string;
-  activityCount: number; evidenceCount: number;
+  activityCount: number; evidenceCount: number; archived?: boolean; lastOpenedAt?: string | null;
 };
 
 export type ProjectOption = { id: string; title: string };
@@ -93,8 +93,8 @@ export async function listProjectSummaries(): Promise<ProjectSummary[]> {
   const rows = await getSql()<{
     id: string; title: string; date_start: string | null; date_end: string | null;
     activity_count: number; evidence_count: number; narrative: string; revision: string; publication_count: number;
-    draft_updated_at: string | null; latest_publication_at: string | null;
-  }[]>`SELECT p.id, p.title, p.date_start::text, p.date_end::text, p.activity_count,
+    archived_at: string | null; last_opened_at: string | null; resource_source_title: string; metadata_revision: string; draft_updated_at: string | null; latest_publication_at: string | null;
+  }[]>`SELECT p.id, p.title, p.date_start::text, p.date_end::text, p.archived_at::text, p.last_opened_at::text, p.resource_source_title, p.metadata_revision::text, p.activity_count,
       count(DISTINCT pe.evidence_asset_id)::int evidence_count,
       coalesce(d.narrative, '') narrative, coalesce(d.revision, 0)::text revision,
       count(DISTINCT pub.id)::int publication_count, d.updated_at::text draft_updated_at,
@@ -104,7 +104,7 @@ export async function listProjectSummaries(): Promise<ProjectSummary[]> {
     LEFT JOIN publication pub ON pub.project_id = p.id
     GROUP BY p.id, d.narrative, d.revision, d.updated_at ORDER BY p.date_end DESC NULLS LAST, p.title`;
   return rows.map((row) => ({
-    id: row.id, name: row.title, period: period(row.date_start, row.date_end),
+    id: row.id, name: row.title, archived: Boolean(row.archived_at), lastOpenedAt: row.last_opened_at, sourceName: row.resource_source_title || row.title, metadataRevision: row.metadata_revision, period: period(row.date_start, row.date_end),
     status: status(row.publication_count, Number(row.revision), Boolean(row.draft_updated_at && row.latest_publication_at && new Date(row.draft_updated_at) > new Date(row.latest_publication_at))),
     narrative: row.narrative || "Narrativa ainda não registrada por Rodrigo.",
     activityCount: row.activity_count, evidenceCount: row.evidence_count,
@@ -116,8 +116,8 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
   const sql = query ?? getSql();
   const projects = await sql<{
     id: string; title: string; date_start: string | null; date_end: string | null;
-    narrative: string; revision: string; publication_count: number; draft_updated_at: string | null; latest_publication_at: string | null;
-  }[]>`SELECT p.id, p.title, p.date_start::text, p.date_end::text,
+    narrative: string; revision: string; publication_count: number; archived_at: string | null; last_opened_at: string | null; resource_source_title: string; metadata_revision: string; draft_updated_at: string | null; latest_publication_at: string | null;
+  }[]>`SELECT p.id, p.title, p.date_start::text, p.date_end::text, p.archived_at::text, p.last_opened_at::text, p.resource_source_title, p.metadata_revision::text,
       coalesce(d.narrative, '') narrative, coalesce(d.revision, 0)::text revision,
       count(pub.id)::int publication_count, d.updated_at::text draft_updated_at, max(pub.created_at)::text latest_publication_at
     FROM project p LEFT JOIN project_draft d ON d.project_id = p.id
@@ -165,6 +165,9 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
       FROM owner_activity_adjustment_history h JOIN bm_activity a ON a.id = h.activity_id
       WHERE a.project_id = ${id} ORDER BY h.activity_id, h.revision`,
   ]);
+  const resource = await sql<{amount: string; applied_at: string; import_id: string}[]>`SELECT sum((r->>'amount')::numeric)::text amount, i.applied_at::text, i.id::text import_id
+    FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id
+    CROSS JOIN LATERAL jsonb_array_elements(i.rows) r WHERE r->>'project'=${row.resource_source_title || row.title} GROUP BY i.id`;
   const histories = new Map<string, Project["activities"][number]["adjustmentHistory"]>();
   for (const entry of activityHistory) {
     const list = histories.get(entry.activity_id) ?? [];
@@ -175,7 +178,7 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
     histories.set(entry.activity_id, list);
   }
   return {
-    id: row.id, name: row.title, period: period(row.date_start, row.date_end),
+    id: row.id, name: row.title, archived: Boolean(row.archived_at), lastOpenedAt: row.last_opened_at, sourceName: row.resource_source_title || row.title, metadataRevision: row.metadata_revision, period: period(row.date_start, row.date_end),
     periodStart: row.date_start ?? "", periodEnd: row.date_end ?? "",
     status: status(row.publication_count, Number(row.revision), Boolean(row.draft_updated_at && row.latest_publication_at && new Date(row.draft_updated_at) > new Date(row.latest_publication_at))),
     narrative: row.narrative || "Narrativa ainda não registrada por Rodrigo.",
@@ -188,7 +191,7 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
       adjustmentRevision: item.adjustment_revision, adjustmentOperation: item.adjustment_operation, adjusted: item.adjusted, adjustmentReason: item.adjustment_reason,
       adjustedBy: item.adjusted_by, adjustedAt: item.adjusted_at, adjustmentHistory: histories.get(item.id) ?? [],
     })),
-    financialReferences: notes.map((item) => {
+    financialReferences: [...notes.map((item) => {
       const auditedForProject = item.candidate_project_id === id;
       return {
         id: item.id, kind: "NFS-e" as const, label: item.note_number, amount: formatBrlDecimal(item.amount),
@@ -200,7 +203,10 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
         sourceCandidateProjectId: item.source_candidate_project_id, adjustmentRevision: item.adjustment_revision,
         adjustmentOperation: item.adjustment_operation, adjusted: item.adjusted, adjustmentReason: item.adjustment_reason, adjustedBy: item.adjusted_by, adjustedAt: item.adjusted_at,
       };
-    }),
+    }), ...resource.map(item => ({id: `base-${item.import_id}`, kind: "Referência financeira" as const,
+      label: `Aplicação de recursos — base de ${new Date(item.applied_at).toLocaleDateString("pt-BR")} (não somar às medições)`,
+      amount: formatBrlDecimal(item.amount), relationBasis: "Declarado na fonte" as const,
+      relation: "Sem relação confirmada" as const, payment: "Não informado" as const}))],
     evidence: evidence.map((item, index) => ({
       id: item.id, name: item.original_name || `Evidência ${String(index + 1).padStart(2, "0")}`,
       kind: item.file_type || "Arquivo",

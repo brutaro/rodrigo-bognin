@@ -1,0 +1,176 @@
+{
+  "version": 2,
+  "story": "3.3",
+  "baselineCommit": "f04b52093c8163a60023f2ae9fed62c117b64c18",
+  "attestation": {
+    "status": "reattested-known-files",
+    "originalSnapshotComplete": false,
+    "scope": "Somente arquivos protegidos conhecidos e pontos de integração explicitamente listados.",
+    "limitations": [
+      "A fotografia original registrou src/modules/ e tests/ como diretórios não rastreados, sem hashes por arquivo.",
+      "Este contrato não alega identidade byte a byte para membros históricos desses diretórios que não constam nas listas.",
+      "Aprovações de integração são hashes do arquivo final inteiro; não há alegação de hunks preservados.",
+      "O HEAD atual ainda não contém os arquivos não rastreados; a autossuficiência vale para o pacote planejado do working tree até autorização de commit."
+    ]
+  },
+  "protectedFiles": [
+    {
+      "path": ".github/workflows/ci-deploy.yml",
+      "sha256": "6975ac7aef4fa4ffa33c3fcab5cfd36e456c9bc8e75b830657f95b4b07f01820",
+      "bytes": 3223,
+      "basis": "baseline-commit-exact"
+    },
+    {
+      "path": "db/migrations/029_source_import_preparation.sql",
+      "sha256": "b78cad705fcb0b339df46cd694f43ce2195214ef933e6272b10562a405c5755f",
+      "bytes": 26156,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "4d848ea8bdc896596eee6795b7ec2bd1a91b50a56abfe7442880f47e8918fad1",
+      "bytes": 322249,
+      "basis": "captured-tracked-patch-and-reattested"
+    },
+    {
+      "path": "scripts/ci-isolated-integration.sh",
+      "sha256": "817eb407122bbb5bbf45b0033b92f8ebb2dad48249e802869345637c0a8503c5",
+      "bytes": 7237,
+      "basis": "baseline-commit-exact"
+    },
+    {
+      "path": "scripts/configure-synthetic-import-bridge.mjs",
+      "sha256": "133536ac5bf6f94f601c11afab9eedad88c8e8b24717f4feee9e303c5c5565d1",
+      "bytes": 616,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "scripts/seed-synthetic-import-attestation.mjs",
+      "sha256": "1bee59d222d986931f276458df1b67b556ee29a0b4512e6bbb28935b180d2e32",
+      "bytes": 2787,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "scripts/seed-synthetic-import-source.mjs",
+      "sha256": "cf6b02cc0e2d7d2e5f4259a202dbd82f54a54eb4a4223d3535899e2af1916c80",
+      "bytes": 5641,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "scripts/story-3-2-browser.mjs",
+      "sha256": "a4e20b0711052fa3a88ca17b3652959c2dacf50015ef223a8ce9a921089fe74d",
+      "bytes": 13277,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "scripts/story-3-2-isolated-integration.sh",
+      "sha256": "bce9a46c5da4c8342232f718d0cf1128d5e6fd8235d6aae905826368ec31e289",
+      "bytes": 9182,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "src/app/api/health/route.ts",
+      "sha256": "ad963756058fa356737bdfc9feb1879661f5d506021a87c3215dcc685fe19b8f",
+      "bytes": 4738,
+      "basis": "baseline-commit-exact"
+    },
+    {
+      "path": "src/app/fontes/base-consolidada/page.tsx",
+      "sha256": "2fe5d27cdd83f5d5bbad4e432b0718f169d2c9194bddde344689dd0c6dc37b37",
+      "bytes": 1090,
+      "basis": "captured-tracked-patch-and-reattested"
+    },
+    {
+      "path": "src/components/consolidated-source-flow.tsx",
+      "sha256": "e344219d9bed4538d1740929eef56188b8723b6f47ab24fbdeb069c3dec868b2",
+      "bytes": 653,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "src/components/consolidated-source-upload.tsx",
+      "sha256": "693ba83f03f584ab42bf349098a418cba010255c3d84622d4dae4027fdb57112",
+      "bytes": 7970,
+      "basis": "captured-tracked-patch-and-reattested"
+    },
+    {
+      "path": "src/lib/consolidated-source-repository.ts",
+      "sha256": "b8c548be2a7654bd6d0e27490b4b2753e611452a0ed4689d6b00a6156edd21dc",
+      "bytes": 5433,
+      "basis": "captured-tracked-patch-and-reattested"
+    },
+    {
+      "path": "vitest.config.ts",
+      "sha256": "0ff1be36f0aa312cbcf60d780dd219fd68bf101982fb97623cbb13669a5353c0",
+      "bytes": 396,
+      "basis": "captured-untracked-and-reattested"
+    },
+    {
+      "path": "vitest.story-3-2.config.ts",
+      "sha256": "f99509bd2393b78a857ce08583c654b4e14ea20a517648533bad1d08d12e1c5e",
+      "bytes": 527,
+      "basis": "captured-untracked-and-reattested"
+    }
+  ],
+  "integrationFiles": [
+    {
+      "path": ".dockerignore",
+      "baselineSha256": "c15946a97df86aaf5ecdec07deeb0905f73cda21d8e1c0e3aadb48173226ae3d",
+      "baselineBytes": 191,
+      "approvedSha256": "2f8d49aa9c3931726019125fbbcf5e2204b6bbb7c32b5c6d6c3d9c6522856a29",
+      "approvedBytes": 273,
+      "approval": "whole-final-file"
+    },
+    {
+      "path": ".gitignore",
+      "baselineSha256": "c158d6f1e76f72c14c46bafec21d8d55baad3ebc6465ba78c70275e83c0eac7c",
+      "baselineBytes": 592,
+      "approvedSha256": "3af140d35631c16de8a2279d15750b9acf4cffa641aedf716abde7629aca446b",
+      "approvedBytes": 676,
+      "approval": "whole-final-file"
+    },
+    {
+      "path": "package.json",
+      "baselineSha256": "e09bdb3edce4952d47a3545a3c47bc66dc8149bf9db06993fb2cf7e4695b9126",
+      "baselineBytes": 1682,
+      "approvedSha256": "66c823000bd911bdb8317f0c076186b2af1bebc8110a7958c023f0821c0e776f",
+      "approvedBytes": 1767,
+      "approval": "whole-final-file"
+    },
+    {
+      "path": "scripts/test-integration.mjs",
+      "baselineSha256": "ee21448ba04c4e74db762660d2f36ef4596d0615460c70d8354212e127d59464",
+      "baselineBytes": 658,
+      "approvedSha256": "cd59af1ba3041d82a400df758f5ad79eb7c160b44191474d1506de6c529256aa",
+      "approvedBytes": 1403,
+      "approval": "whole-final-file"
+    },
+    {
+      "path": "scripts/validate-database.mjs",
+      "baselineSha256": "15d5d66815972eca9089b7835d887b2f6891a529bebd365f8f1621e639777c0e",
+      "baselineBytes": 14774,
+      "approvedSha256": "b0f4a49ba9863c271b89bf70a72f20f3257e3e43612d319e5e5986a94613619b",
+      "approvedBytes": 16474,
+      "approval": "whole-final-file"
+    },
+    {
+      "path": "src/app/fontes/base-consolidada/actions.ts",
+      "baselineSha256": "76a9461937ff7e2fcc814eb88c5ddabc2922aac3425b36d55ed28ab9e67d08ff",
+      "baselineBytes": 6184,
+      "approvedSha256": "f8ae2726e6ac7ab2df161421cb1370fbca747f5b01133be6bf6da7b0300b2e5b",
+      "approvedBytes": 16044,
+      "approval": "whole-final-file"
+    },
+    {
+      "path": "src/components/consolidated-source-preparation.tsx",
+      "baselineSha256": "20eb373f9787a09f367b886edf59a4792832c963f7b491fb94746f51f76d39ad",
+      "baselineBytes": 15373,
+      "approvedSha256": "2b455bfe5d749d5f7b489753633832bd9968d363cb394809c41d9505c1050d8b",
+      "approvedBytes": 16946,
+      "approval": "whole-final-file"
+    }
+  ],
+  "expectedCounts": {
+    "protectedFiles": 16,
+    "integrationFiles": 7
+  }
+}

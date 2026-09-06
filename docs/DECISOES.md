@@ -1,5 +1,7 @@
 # Decisões do Plano B
 
+> Histórico de decisões. Para o estado operacional vigente, consulte [operação do MVP](mvp.md).
+
 - O BMAD fica pausado e seus artefatos não são alterados.
 - O MVP é uma ferramenta pessoal de Rodrigo, não uma plataforma corporativa.
 - R2 privado com limite interno de 9 GB é suficiente para o primeiro MVP.

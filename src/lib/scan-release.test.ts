@@ -8,12 +8,16 @@ describe("scanner fail-closed da release", () => {
   it("aceita somente os assets binários nominais", () => {
     expect(pathViolation("src/app/favicon.ico")).toBeNull();
     expect(pathViolation("public/file.svg")).toBeNull();
+    expect(pathViolation("public/tria.png")).toBeNull();
     for (const name of [".secrets/password", "fonte.csv", "docs/anexo.pdf", "arquivo.docx", "arquivo.xlsx", "arquivo.pptx", "arquivo.pbix", "public/outro.png", "public/outro.ico"]) {
       expect(pathViolation(name)).toBeTruthy();
     }
   });
   it("permite apenas o código nominal da rota de fontes", () => {
     expect(pathViolation("src/app/api/sources/consolidated/route.ts")).toBeNull();
+    expect(pathViolation("src/app/backup/page.tsx")).toBeNull();
+    expect(pathViolation("src/app/api/sources/fiscal-pdf/[id]/suggestions/route.ts")).toBeNull();
+    expect(pathViolation("src/app/backup/database.dump")).toBeTruthy();
     expect(pathViolation("src/app/api/sources/consolidated/route.test.ts")).toBeNull();
     expect(pathViolation("src/app/api/sources/consolidated/fixture.csv")).toBeTruthy();
     expect(pathViolation("src/app/api/sources/outra-rota.ts")).toBeTruthy();

@@ -29,14 +29,22 @@ async function authenticatedCookie() {
 }
 try {
   await health(200);
+  const cookie = await authenticatedCookie(); const headers = { Cookie: cookie }; const downloads = [];
   const [version] = await sql`SELECT v.id::text id, v.object_key::text, v.evidence_asset_id asset FROM file_version v
     WHERE (SELECT count(*) FROM project_evidence pe WHERE pe.evidence_asset_id = v.evidence_asset_id) = 2 LIMIT 1`;
   const object = path.join(process.env.TRIA_FILE_STORE_PATH, "objects", version.object_key); const moved = `${object}.health-test`;
   await rename(object, moved); try { await health(503); } finally { await rename(moved, object); } await health(200);
-  await sql`UPDATE file_document SET status = 'purging' WHERE id = (SELECT document_id FROM file_version WHERE id = ${version.id})`; try { await health(503); } finally { await sql`UPDATE file_document SET status = 'active' WHERE id = (SELECT document_id FROM file_version WHERE id = ${version.id})`; } await health(200);
+  await sql`UPDATE file_document SET status = 'purging' WHERE id = (SELECT document_id FROM file_version WHERE id = ${version.id})`; try {
+    await health(200);
+    const denied = await fetch(`${base}/api/projects/synthetic-p1/evidence/${version.asset}/download`, { headers });
+    assert(denied.status === 404, "documento em expurgo continua acessível");
+  } finally { await sql`UPDATE file_document SET status = 'active' WHERE id = (SELECT document_id FROM file_version WHERE id = ${version.id})`; } await health(200);
   const [link] = await sql`DELETE FROM project_evidence WHERE project_id = 'synthetic-p1' AND evidence_asset_id = ${version.asset} RETURNING *`;
-  try { await health(503); } finally { await sql`INSERT INTO project_evidence (project_id, evidence_asset_id, strength, rule_used, caveat, status, batch_id) VALUES (${link.project_id}, ${link.evidence_asset_id}, ${link.strength}, ${link.rule_used}, ${link.caveat}, ${link.status}, ${link.batch_id})`; } await health(200);
-  const cookie = await authenticatedCookie(); const headers = { Cookie: cookie }; const downloads = [];
+  try {
+    await health(200);
+    const denied = await fetch(`${base}/api/projects/synthetic-p1/evidence/${version.asset}/download`, { headers });
+    assert(denied.status === 404, "vínculo removido continua autorizando download");
+  } finally { await sql`INSERT INTO project_evidence (project_id, evidence_asset_id, strength, rule_used, caveat, status, batch_id) VALUES (${link.project_id}, ${link.evidence_asset_id}, ${link.strength}, ${link.rule_used}, ${link.caveat}, ${link.status}, ${link.batch_id})`; } await health(200);
   for (const projectId of ["synthetic-p1", "synthetic-p2"]) {
     const response = await fetch(`${base}/api/projects/${projectId}/evidence/${version.asset}/download`, { headers });
     assert(response.status === 200 && response.headers.get("x-tria-file-sha256") === version.asset, `download vinculado inválido: ${projectId} status=${response.status} sha=${response.headers.get("x-tria-file-sha256")}`); downloads.push(Buffer.from(await response.arrayBuffer()));
@@ -134,6 +142,28 @@ try {
       headers: { ...sourceHeaders, "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": "1" } });
     assert(noQuota.status === 413, "fonte não falhou fechado sem quota");
   } finally { await sql`UPDATE file_store_counter SET reserved_bytes = 0 WHERE singleton`; }
+  await health(200);
+  const contractUrl = `${base}/api/projects/synthetic-p1/contract`;
+  const contract = { revision: "0", totalCents: "100000", reference: "Contrato sintético CI", reason: "Cadastro inicial CI",
+    receipts: [{ id: randomUUID(), amountCents: "30000", receivedOn: "2026-01-01", reference: "Parcela sintética", voided: false }] };
+  const saveContract = (value, origin = base, session = headers) => fetch(contractUrl, { method: "PUT",
+    headers: { ...session, Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify(value) });
+  assert((await saveContract(contract, base, {})).status === 401, "contrato sem sessão foi aceito");
+  assert((await saveContract(contract, "https://untrusted.invalid")).status === 403, "contrato sem mesma origem foi aceito");
+  const saved = await saveContract(contract);
+  assert(saved.status === 200 && (await saved.json()).revision === "1", "contrato inicial não persistiu");
+  assert((await saveContract(contract)).status === 409, "revisão antiga sobrescreveu contrato");
+  const voided = { ...contract, revision: "1", reason: "Anulação sintética", receipts: contract.receipts.map(r => ({ ...r, voided: true })) };
+  assert((await saveContract(voided)).status === 200, "anulação não persistiu");
+  const revisions = await sql`SELECT revision::text, receipts FROM project_contract_revision WHERE project_id='synthetic-p1' ORDER BY revision`;
+  assert(revisions.length === 2 && revisions[0].receipts[0].voided === false && revisions[1].receipts[0].voided === true, "histórico contratual foi sobrescrito");
+  const [contractAcl] = await sql`SELECT has_table_privilege('tria_app', 'project_contract_revision', 'UPDATE') can_update, has_table_privilege('tria_app', 'project_contract_revision', 'DELETE') can_delete`;
+  assert(!contractAcl.can_update && !contractAcl.can_delete, "aplicação pode sobrescrever histórico contratual");
+  const projectPage = await fetch(`${base}/projetos/synthetic-p1`, { headers });
+  const projectHtml = await projectPage.text();
+  assert(projectPage.status === 200 && projectHtml.includes("Saldo contratual a receber") && projectHtml.includes("Contrato sintético CI"), "contrato ausente na UI");
+  const report = await fetch(`${base}/api/reports/projects/synthetic-p1`, { headers });
+  assert(report.status === 200 && Buffer.from(await report.arrayBuffer()).subarray(0, 5).toString() === "%PDF-", "relatório PDF do projeto falhou");
   await health(200);
   console.log("integração sintética: crash/resume, health, downloads e fonte consolidada validados");
 } finally { await sql.end(); }
