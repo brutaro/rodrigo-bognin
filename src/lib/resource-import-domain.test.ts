@@ -39,3 +39,33 @@ it("aplica decisões individuais sem perder ausentes mantidos e recusa decisões
  expect(resolveResourceRows([a,b],next,{A:"keep",B:"incoming"})).toEqual([a,next[1]]);
  expect(()=>resolveResourceRows([a,b],next,{A:"keep",B:"keep",unknown:"keep"})).toThrow();
 });
+
+import { mergeProjectResources } from "./resource-import-domain";
+describe("Importação por projeto", () => {
+ const scope = {title:"Projeto A", aliases:["Projeto A", "Nome atual"]};
+ it("usa o projeto selecionado sem coluna Projeto e confere nomes quando mapeados", () => {
+   const simple = suggestResourceMapping(["ID","Data","Atividade","Valor"]);
+   const result = validateResourceRows([["A1","2026-09-07","Entrega","25,50"]],simple,4,undefined,scope);
+   expect(result.errors).toEqual([]);
+   expect(result.rows[0]).toMatchObject({id:"A1",project:"Projeto A",amount:"25.50"});
+   expect(validateResourceRows([["A1","Nome atual","","Entrega","25"]],mapping,headers.length,undefined,scope).errors).toEqual([]);
+   expect(validateResourceRows([["A1","Projeto B","","Entrega","25"]],mapping,headers.length,undefined,scope).errors[0]).toContain("projeto diferente");
+ });
+ it("preserva outros projetos e exige decisões apenas sobre o projeto selecionado", () => {
+   const a={id:"A1",project:"Projeto A",date:"",activity:"",amount:"10",hours:"",nature:""};
+   const b={...a,id:"B1",project:"Projeto B"};
+   const absent={...a,id:"A2"};
+   const incoming={...a,amount:"20"};
+   const merged=mergeProjectResources([a,b,absent],[incoming],scope.title);
+   expect(merged).toContainEqual(b);
+   expect(resourceDifferences([a,b,absent],merged).map(d=>d.id)).toEqual(["A1","A2"]);
+   const resolved=resolveResourceRows([a,b,absent],merged,{A1:"incoming",A2:"keep"});
+   expect(resolved).toEqual([b,incoming,absent]);
+   expect(()=>resolveResourceRows([a,b,absent],merged,{A1:"incoming",A2:"keep",B1:"incoming"})).toThrow();
+ });
+ it("bloqueia colisões de ID com outro projeto e não aceita reassociar registros", () => {
+   const b={id:"B1",project:"Projeto B",date:"",activity:"",amount:"10",hours:"",nature:""};
+   expect(()=>mergeProjectResources([b],[{...b,project:"Projeto A"}],scope.title)).toThrow("já pertence a outro projeto");
+   expect(()=>mergeProjectResources([b],[b],scope.title)).toThrow("outro projeto");
+ });
+});

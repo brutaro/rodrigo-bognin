@@ -34,6 +34,10 @@ jobs:
           TRIA_INTEGRATION_ISOLATED: confirmed
           TRIA_INTEGRATION_NAMESPACE: tria-evidence-${{ github.run_id }}-${{ github.run_attempt }}
         run: npm run test:ci-integration
+      - name: Preparar navegador dos testes
+        run: npx playwright install --with-deps chromium
+      - name: Importação por projeto e medições no navegador
+        run: bash scripts/project-resource-e2e.sh
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

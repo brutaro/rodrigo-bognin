@@ -83,7 +83,8 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 {draft.updatedAt ? `Salvo em ${displayDate(draft.updatedAt)}` : localData ? "Ainda sem alterações locais" : "Ainda sem alterações demonstrativas"}
               </p>
             </div>
-            <div className="flex shrink-0 flex-col items-stretch gap-2 sm:flex-row">
+            <div className="flex flex-wrap flex-col items-stretch gap-2 sm:flex-row">
+              {localData ? <Link href={`/projetos/${encodeURIComponent(project.id)}/importar-planilha`} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--brand)] bg-white px-4 py-2 text-sm font-semibold text-[var(--brand)]">Importar planilha neste projeto</Link> : null}
               {localData ? <a href={`/api/reports/projects/${encodeURIComponent(project.id)}`} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-800 hover:bg-slate-50">Baixar relatório PDF</a> : null}
               {latestPublication ? <Link href={`/publicacoes/${latestPublication.id}`} className="inline-flex h-11 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-900 hover:bg-blue-100">Ver publicação V{latestPublication.version}</Link> : null}
               <Link href={`/projetos/${project.id}/conferir`} className="inline-flex h-11 items-center justify-center rounded-xl bg-[var(--brand)] px-4 text-sm font-semibold text-white hover:bg-blue-900">Ver como ficará</Link>
@@ -92,7 +93,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           {localData ? <ProjectSettings title={project.name} start={project.periodStart} end={project.periodEnd} archived={Boolean(project.archived)} revision={project.metadataRevision ?? "0"} action={editProjectAction.bind(null, project.id)} /> : null}
         </section>
 
-        <ResourceSummary projectTitle={project.sourceName ?? project.name} />
+        <ResourceSummary projectId={project.id} projectTitle={project.sourceName ?? project.name} />
         <ContractSummary contract={draft.contract} /><ContractEditor key={draft.contract?.revision??"0"} projectId={project.id} contract={draft.contract} />
         {draft.cash && <><CashSummary result={draft.cash} /><CashReviewEditor key={`${draft.cash.sourceHash}-${draft.cash.review?.revision ?? "0"}`} projectId={project.id} basisHash={draft.cash.sourceHash} review={draft.cash.review} /></>}
 
