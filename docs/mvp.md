@@ -36,3 +36,39 @@ No Railway, `TRIA_CONSOLIDATED_SOURCE_UPLOAD=authenticated-owner` habilita as
 importações autenticadas; fixtures sintéticas continuam bloqueadas. O workflow
 registra `TRIA_RELEASE_SHA` e verifica o mesmo commit no health público.
 O código de acesso, banco e arquivos continuam privados.
+
+## Planilha de recursos por projeto
+
+No projeto, use **Importar planilha neste projeto**. Aceita XLSX/CSV com ID,
+Data, Atividade e Valor mapeados; Projeto é opcional e preenchido pelo destino.
+Quando mapeada, a coluna Projeto é conferida contra o nome atual ou de origem.
+A prévia compara somente esse projeto. Registros alterados ou ausentes exigem
+uma decisão, e os demais projetos permanecem na base integral. IDs já usados
+por outro projeto são bloqueados. Mudanças na base após a prévia exigem nova
+preparação. O envio não registra pagamentos nem altera medições antigas.
+
+
+### Atividades e medições da planilha
+
+Marque **Também preencher Atividades e medições** antes de preparar a prévia.
+Atividade e Valor precisam estar preenchidos; Horas (decimais) e Boletim são
+opcionais. Cada ID cria uma atividade ou atualiza a que foi criada por esta
+importação. Reenviar o mesmo ID não duplica atividades nem soma o valor duas vezes.
+Uma planilha já carregada somente como recursos pode ser reenviada com essa opção.
+Se houver diferenças, confira e use **Recalcular prévia com minhas decisões**.
+
+Ajustes manuais de horas e medição prevalecem sobre novas cargas. **Restaurar
+importado** recupera os valores da última importação daquela atividade.
+Atividades ausentes da nova planilha são mantidas. A prévia mostra quantas
+atividades serão criadas, atualizadas ou preservadas. As 3.364 atividades da
+carga original são protegidas contra duplicação; seus IDs originais não são
+convertidos novamente nem atualizados por esta opção. Os ajustes existentes
+continuam disponíveis para elas.
+
+A operação é transacional, invalida a revisão do projeto afetado e registra o
+histórico. As versões das planilhas e os ajustes manuais permanecem guardados.
+Esta importação não cadastra clientes, fornecedores, evidências ou pagamentos.
+
+Validação de navegador: `npx playwright install chromium` e
+`bash scripts/project-resource-e2e.sh`. O runner usa dados sintéticos na porta
+3111 e remove seus containers, volumes e imagens ao terminar. Também roda no CI.

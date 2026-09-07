@@ -26,3 +26,5 @@ docs
 # Story 3.3 disposable harness files are never build inputs
 scripts/.story-3-3-*
 /.local-backups/
+/output/
+/tmp/
