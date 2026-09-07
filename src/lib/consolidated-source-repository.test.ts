@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  realSourceUploadEnabled,
   consolidatedSourceUploadEnabled,
   consolidatedSourceUploadLimitBytes,
   receiveConsolidatedSource,
@@ -119,5 +120,24 @@ describe("gate de fixtures sintéticas", () => {
       mediaType: "text/csv",
       body: null,
     })).rejects.toMatchObject({ code: "disabled" });
+  });
+});
+
+
+describe("importação do proprietário em produção", () => {
+  it("exige habilitação explícita no Railway e mantém fixtures bloqueadas", () => {
+    process.env.TRIA_RUNTIME = "railway";
+    for (const mode of ["local-owner", "synthetic-fixtures-only", "disabled", ""]) {
+      process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD = mode;
+      expect(realSourceUploadEnabled()).toBe(false);
+      expect(consolidatedSourceUploadEnabled()).toBe(false);
+    }
+    process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD = "authenticated-owner";
+    expect(realSourceUploadEnabled()).toBe(true);
+    expect(consolidatedSourceUploadEnabled()).toBe(true);
+    process.env.TRIA_RUNTIME = "local";
+    expect(realSourceUploadEnabled()).toBe(false);
+    process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD = "local-owner";
+    expect(realSourceUploadEnabled()).toBe(true);
   });
 });

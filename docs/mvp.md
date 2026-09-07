@@ -31,3 +31,8 @@ vez, fora dos containers de integração.
 
 O workflow valida PRs. O job de deploy exige **push na main** após CI aprovado.
 Abrir ou atualizar o PR não autoriza merge ou deploy.
+
+No Railway, `TRIA_CONSOLIDATED_SOURCE_UPLOAD=authenticated-owner` habilita as
+importações autenticadas; fixtures sintéticas continuam bloqueadas. O workflow
+registra `TRIA_RELEASE_SHA` e verifica o mesmo commit no health público.
+O código de acesso, banco e arquivos continuam privados.

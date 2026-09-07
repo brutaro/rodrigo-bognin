@@ -18,6 +18,6 @@ export async function GET() {
     if (!valid || counter.used_bytes !== counter.catalog_bytes || Number(counter.quota_bytes) !== fileQuotaBytes) {
       return Response.json({ status: "unavailable", reason: "catalog" }, { status: 503 });
     }
-    return Response.json({ status: process.env.TRIA_MAINTENANCE_MODE === "enabled" ? "maintenance" : "ok", release: process.env.RAILWAY_GIT_COMMIT_SHA ?? "local" });
+    return Response.json({ status: process.env.TRIA_MAINTENANCE_MODE === "enabled" ? "maintenance" : "ok", release: process.env.TRIA_RELEASE_SHA ?? process.env.RAILWAY_GIT_COMMIT_SHA ?? "local" });
   } catch { return Response.json({ status: "unavailable", reason: "database" }, { status: 503 }); }
 }

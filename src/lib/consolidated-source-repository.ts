@@ -62,7 +62,8 @@ export function validateConsolidatedSourceUploadMetadata(input: {
 }
 
 export function realSourceUploadEnabled() {
-  return process.env.TRIA_RUNTIME !== "railway" && process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD === "local-owner";
+  const mode = process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD;
+  return process.env.TRIA_RUNTIME === "railway" ? mode === "authenticated-owner" : mode === "local-owner";
 }
 
 export function consolidatedSourceUploadEnabled() {
