@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import type { TransactionSql } from "postgres";
 import { getSql } from "./database";
 import {
   assertFileStore,
@@ -118,6 +119,75 @@ async function releaseReservation(id: string) {
   });
 }
 
+export type OpaqueUploadArtifact = {
+  reservationId: string;
+  objectKey: string;
+  size: number;
+  sha256: string;
+  createdAt: string;
+};
+
+export async function persistOpaqueUpload<TResult>(input: {
+  expectedSize: number;
+  body: ReadableStream<Uint8Array> | null;
+  beforeStore?: () => Promise<void>;
+  catalog: (tx: TransactionSql, artifact: OpaqueUploadArtifact) => Promise<TResult>;
+}) {
+  if (!Number.isSafeInteger(input.expectedSize) || input.expectedSize <= 0 || input.expectedSize > fileQuotaBytes) {
+    throw new FileRepositoryError("Tamanho de arquivo inválido.", "invalid");
+  }
+  return withFileOperation(async () => {
+    const store = await reconcileFileStoreInternal();
+    await input.beforeStore?.();
+    const safetyMargin = BigInt(16 * 1024 * 1024);
+    if (store.availableBytes < BigInt(input.expectedSize) + safetyMargin) {
+      throw new FileRepositoryError("Espaço físico insuficiente no volume.", "quota");
+    }
+    const reservation = await reserveBytes(input.expectedSize);
+    if (!reservation.objectKey) throw new FileRepositoryError("Reserva de objeto inválida.", "unavailable");
+    const objectKey = reservation.objectKey;
+    let stored = false;
+    try {
+      const integrity = await writeUploadObject(input.body, reservation.id, objectKey, input.expectedSize);
+      stored = true;
+      const sql = getSql();
+      return await sql.begin(async (tx) => {
+        const [held] = await tx<{ reserved_bytes: string; status: string }[]>`
+          SELECT reserved_bytes::text, status FROM file_reservation WHERE id = ${reservation.id} FOR UPDATE`;
+        if (!held || held.status !== "reserved" || Number(held.reserved_bytes) !== integrity.size) {
+          throw new FileRepositoryError("Reserva de upload inválida.", "unavailable");
+        }
+        const result = await input.catalog(tx, {
+          reservationId: reservation.id,
+          objectKey,
+          size: integrity.size,
+          sha256: integrity.sha256,
+          createdAt: new Date().toISOString(),
+        });
+        await tx`UPDATE file_store_counter SET reserved_bytes = reserved_bytes - ${integrity.size}, used_bytes = used_bytes + ${integrity.size} WHERE singleton`;
+        await tx`UPDATE file_reservation SET status = 'committed' WHERE id = ${reservation.id}`;
+        return result;
+      });
+    } catch (error) {
+      if (!stored) {
+        await removeStagingObject(reservation.id);
+        await releaseReservation(reservation.id);
+      } else {
+        let referenced: boolean | undefined;
+        try {
+          const rows = await getSql()`SELECT id FROM file_version WHERE object_key = ${objectKey}`;
+          referenced = rows.length > 0;
+        } catch { referenced = undefined; }
+        if (referenced === false) {
+          await removeStoredObject(objectKey);
+          await releaseReservation(reservation.id);
+        }
+      }
+      throw error;
+    }
+  });
+}
+
 async function validateUploadTarget(projectId: string, documentId?: string | null) {
   const sql = getSql();
   const rows = documentId
@@ -130,75 +200,37 @@ export async function uploadProjectFile(input: {
   projectId: string; documentId?: string | null; title: string; originalName: string;
   mediaType: string | null; expectedSize: number; body: ReadableStream<Uint8Array> | null;
 }) {
-  if (!Number.isSafeInteger(input.expectedSize) || input.expectedSize <= 0 || input.expectedSize > fileQuotaBytes) {
-    throw new FileRepositoryError("Tamanho de arquivo inválido.", "invalid");
-  }
-  return withFileOperation(async () => {
-    const store = await reconcileFileStoreInternal();
-    await validateUploadTarget(input.projectId, input.documentId);
-    const safetyMargin = BigInt(16 * 1024 * 1024);
-    if (store.availableBytes < BigInt(input.expectedSize) + safetyMargin) {
-      throw new FileRepositoryError("Espaço físico insuficiente no volume.", "quota");
-    }
-    const reservation = await reserveBytes(input.expectedSize);
-    if (!reservation.objectKey) throw new FileRepositoryError("Reserva de objeto inválida.", "unavailable");
-    let stored = false;
-    try {
-      const integrity = await writeUploadObject(input.body, reservation.id, reservation.objectKey, input.expectedSize);
-      stored = true;
-      const sql = getSql();
-      return await sql.begin(async (tx) => {
-        const [held] = await tx<{ reserved_bytes: string; status: string }[]>`
-          SELECT reserved_bytes::text, status FROM file_reservation WHERE id = ${reservation.id} FOR UPDATE`;
-        if (!held || held.status !== "reserved" || Number(held.reserved_bytes) !== integrity.size) {
-          throw new FileRepositoryError("Reserva de upload inválida.", "unavailable");
-        }
-        let documentId = input.documentId ?? null;
-        let version = 1;
-        const now = new Date().toISOString();
-        const originalName = normalizeName(input.originalName);
-        if (documentId) {
-          const [document] = await tx<{ id: string }[]>`
-            SELECT id::text FROM file_document WHERE id = ${documentId} AND document_kind = 'project' AND project_id = ${input.projectId} AND status = 'active' FOR UPDATE`;
-          if (!document) throw new FileRepositoryError("Arquivo não encontrado.", "not-found");
-          const [latest] = await tx<{ version: number }[]>`SELECT version FROM file_version WHERE document_id = ${documentId} ORDER BY version DESC LIMIT 1`;
-          version = (latest?.version ?? 0) + 1;
-          await tx`UPDATE file_document SET title = ${normalizeTitle(input.title, originalName)}, updated_at = ${now} WHERE id = ${documentId}`;
-        } else {
-          documentId = randomUUID();
-          await tx`INSERT INTO file_document (id, project_id, title, status, created_at, updated_at)
-            VALUES (${documentId}, ${input.projectId}, ${normalizeTitle(input.title, originalName)}, 'active', ${now}, ${now})`;
-        }
-        const versionId = randomUUID();
-        await tx`INSERT INTO file_version
-          (id, document_id, version, object_key, original_name, media_type, size_bytes, sha256, status, created_at)
-          VALUES (${versionId}, ${documentId}, ${version}, ${reservation.objectKey}, ${originalName},
-            ${normalizeMediaType(input.mediaType)}, ${integrity.size}, ${integrity.sha256}, 'active', ${now})`;
-        await tx`UPDATE file_store_counter SET reserved_bytes = reserved_bytes - ${integrity.size}, used_bytes = used_bytes + ${integrity.size} WHERE singleton`;
-        await tx`UPDATE file_reservation SET status = 'committed' WHERE id = ${reservation.id}`;
-        await tx`UPDATE project_draft SET revision = revision + 1, updated_at = ${now} WHERE project_id = ${input.projectId}`;
-        await tx`INSERT INTO file_operation_event
-          (id, project_id, operation, byte_count, version_count, publication_count, actor, occurred_at)
-          VALUES (${randomUUID()}, ${input.projectId}, 'upload_version', ${integrity.size}, 1, 0, 'Rodrigo', ${now})`;
-        return { documentId, versionId, version, ...integrity };
-      });
-    } catch (error) {
-      if (!stored) {
-        await removeStagingObject(reservation.id);
-        await releaseReservation(reservation.id);
+  return persistOpaqueUpload({
+    expectedSize: input.expectedSize,
+    body: input.body,
+    beforeStore: () => validateUploadTarget(input.projectId, input.documentId),
+    catalog: async (tx, artifact) => {
+      let documentId = input.documentId ?? null;
+      let version = 1;
+      const originalName = normalizeName(input.originalName);
+      if (documentId) {
+        const [document] = await tx<{ id: string }[]>`
+          SELECT id::text FROM file_document WHERE id = ${documentId} AND document_kind = 'project' AND project_id = ${input.projectId} AND status = 'active' FOR UPDATE`;
+        if (!document) throw new FileRepositoryError("Arquivo não encontrado.", "not-found");
+        const [latest] = await tx<{ version: number }[]>`SELECT version FROM file_version WHERE document_id = ${documentId} ORDER BY version DESC LIMIT 1`;
+        version = (latest?.version ?? 0) + 1;
+        await tx`UPDATE file_document SET title = ${normalizeTitle(input.title, originalName)}, updated_at = ${artifact.createdAt} WHERE id = ${documentId}`;
       } else {
-        let referenced: boolean | undefined;
-        try {
-          const rows = await getSql()`SELECT id FROM file_version WHERE object_key = ${reservation.objectKey}`;
-          referenced = rows.length > 0;
-        } catch { referenced = undefined; }
-        if (referenced === false) {
-          await removeStoredObject(reservation.objectKey);
-          await releaseReservation(reservation.id);
-        }
+        documentId = randomUUID();
+        await tx`INSERT INTO file_document (id, project_id, title, status, created_at, updated_at)
+          VALUES (${documentId}, ${input.projectId}, ${normalizeTitle(input.title, originalName)}, 'active', ${artifact.createdAt}, ${artifact.createdAt})`;
       }
-      throw error;
-    }
+      const versionId = randomUUID();
+      await tx`INSERT INTO file_version
+        (id, document_id, version, object_key, original_name, media_type, size_bytes, sha256, status, created_at)
+        VALUES (${versionId}, ${documentId}, ${version}, ${artifact.objectKey}, ${originalName},
+          ${normalizeMediaType(input.mediaType)}, ${artifact.size}, ${artifact.sha256}, 'active', ${artifact.createdAt})`;
+      await tx`UPDATE project_draft SET revision = revision + 1, updated_at = ${artifact.createdAt} WHERE project_id = ${input.projectId}`;
+      await tx`INSERT INTO file_operation_event
+        (id, project_id, operation, byte_count, version_count, publication_count, actor, occurred_at)
+        VALUES (${randomUUID()}, ${input.projectId}, 'upload_version', ${artifact.size}, 1, 0, 'Rodrigo', ${artifact.createdAt})`;
+      return { documentId, versionId, version, size: artifact.size, sha256: artifact.sha256 };
+    },
   });
 }
 
@@ -230,12 +262,14 @@ export async function listProjectFiles(projectId: string) {
   return [...documents.values()];
 }
 
-export function currentPublishedFiles(documents: FileDocumentRecord[]) {
-  return documents.filter((document) => document.status === "active" && document.includeInPublication).flatMap((document) => {
-    const version = document.versions.find((item) => item.status === "active");
-    return version ? [{ documentId: document.id, versionId: version.id, title: document.title,
-      version: version.version, originalName: version.originalName, mediaType: version.mediaType,
-      sizeBytes: version.sizeBytes, sha256: version.sha256 }] : [];
+export function currentPublishedFiles(documents: FileDocumentRecord[], proofVersionIds: string[] = []) {
+  const proofs = new Set(proofVersionIds);
+  return [...documents].sort((a,b)=>a.id.localeCompare(b.id)).filter(document => document.status === "active").flatMap(document => {
+    const active = document.versions.filter(item=>item.status === "active").sort((a,b)=>b.version-a.version);
+    return active.filter(version => proofs.has(version.id) || (document.includeInPublication && version.id===active[0]?.id)).map(version => ({
+      documentId:document.id,versionId:version.id,title:document.title,version:version.version,
+      originalName:version.originalName,mediaType:version.mediaType,sizeBytes:version.sizeBytes,sha256:version.sha256,
+    }));
   });
 }
 
@@ -271,7 +305,7 @@ export async function readFileVersion(versionId: string) {
   }[]>`SELECT v.id::text, v.document_id::text, d.project_id, v.evidence_asset_id,
       v.version, v.object_key::text, v.original_name, v.media_type, v.size_bytes::text, v.sha256, v.status, v.created_at::text
     FROM file_version v JOIN file_document d ON d.id = v.document_id
-    WHERE v.id = ${versionId} AND v.status = 'active' AND d.status = 'active'`;
+    WHERE v.id = ${versionId} AND v.status = 'active' AND d.status = 'active' AND d.document_kind <> 'source'`;
   return row ? { id: row.id, documentId: row.document_id, projectId: row.project_id ?? undefined,
     evidenceAssetId: row.evidence_asset_id ?? undefined, version: row.version, objectKey: row.object_key,
     originalName: row.original_name, mediaType: row.media_type,
@@ -416,7 +450,7 @@ export async function tryReconcileFileStore() {
 
 async function liveFileAccessControl() {
   const sql = getSql();
-  const vaultTables = ["file_document", "file_version", "file_reservation", "file_store_counter", "publication_file", "file_operation_event", "publication"];
+  const vaultTables = ["file_document", "file_version", "file_reservation", "file_store_counter", "publication_file", "file_operation_event", "publication", "source_file", "source_file_event"];
   const owners = await sql<{ tablename: string; tableowner: string }[]>`
     SELECT tablename, tableowner FROM pg_tables WHERE schemaname = 'public' AND tablename IN ${sql(vaultTables)} ORDER BY tablename`;
   const tableAcl = await sql<{ object_name: string; grantee: string; privilege: string; grantable: boolean }[]>`
@@ -472,9 +506,24 @@ function accessControlIsCanonical(access: Awaited<ReturnType<typeof liveFileAcce
     "file_store_counter|tria_app|SELECT|false", "file_version|tria_app|SELECT|false",
     "publication|tria_app|INSERT|false", "publication|tria_app|SELECT|false",
     "publication_file|tria_app|INSERT|false", "publication_file|tria_app|SELECT|false",
+    "source_file|tria_app|INSERT|false", "source_file|tria_app|SELECT|false",
+    "source_file_event|tria_app|INSERT|false", "source_file_event|tria_app|SELECT|false",
   ];
   const columnExpected = [
+    // Leitura limitada concedida ao importador pela migração 029.
+    "source_file|id|tria_importer|SELECT|false",
+    "source_file|file_version_id|tria_importer|SELECT|false",
+    "source_file|document_id|tria_importer|SELECT|false",
+    "source_file|source_format|tria_importer|SELECT|false",
+    "file_version|id|tria_importer|SELECT|false",
+    "file_version|document_id|tria_importer|SELECT|false",
+    "file_version|sha256|tria_importer|SELECT|false",
+    "file_version|status|tria_importer|SELECT|false",
+    "file_document|id|tria_importer|SELECT|false",
+    "file_document|document_kind|tria_importer|SELECT|false",
+    "file_document|status|tria_importer|SELECT|false",
     "file_document|created_at|tria_app|INSERT|false", "file_document|id|tria_app|INSERT|false",
+    "file_document|document_kind|tria_app|INSERT|false",
     "file_document|include_in_publication|tria_app|INSERT|false", "file_document|project_id|tria_app|INSERT|false",
     "file_document|status|tria_app|INSERT|false", "file_document|title|tria_app|INSERT|false",
     "file_document|updated_at|tria_app|INSERT|false",
@@ -489,7 +538,7 @@ function accessControlIsCanonical(access: Awaited<ReturnType<typeof liveFileAcce
     "file_store_counter|used_bytes|tria_app|UPDATE|false", "file_store_counter|volume_uuid|tria_app|UPDATE|false",
     "file_version|status|tria_app|UPDATE|false",
   ];
-  return observed.tableOwners.length === 7 && observed.tableOwners.every((row) => row.tableowner === "tria_migrator") &&
+  return observed.tableOwners.length === 9 && observed.tableOwners.every((row) => row.tableowner === "tria_migrator") &&
     exactAcl(observed.tableAcl, ["object_name", "grantee", "privilege", "grantable"], tableExpected) && exactAcl(observed.columnAcl, ["object_name", "column_name", "grantee", "privilege", "grantable"], columnExpected) &&
     exactAcl(observed.functionAcl, ["object_name", "owner", "security_definer", "configuration", "grantee", "privilege", "grantable"], ["complete_file_purge(p_document_id uuid)|tria_migrator|true|search_path=pg_catalog, public|tria_app|EXECUTE|false"]) &&
     exactAcl(observed.schemaAcl, ["object_name", "owner", "grantee", "privilege", "grantable"], ["public|pg_database_owner|PUBLIC|USAGE|false", "public|pg_database_owner|tria_migrator|CREATE|false", "public|pg_database_owner|tria_migrator|USAGE|false"]) &&
@@ -528,10 +577,15 @@ export async function canonicalFileCatalog() {
     JOIN publication p ON p.id = pf.publication_id JOIN file_version v ON v.id = pf.file_version_id
     JOIN file_document d ON d.id = v.document_id WHERE d.status = 'active' AND v.status = 'active'
     ORDER BY pf.publication_id, pf.file_version_id`;
+  const sourceFiles = await sql`SELECT id::text id, document_id::text, file_version_id::text, source_format, received_by, received_at::text
+    FROM source_file ORDER BY id`;
+  const sourceEvents = await sql`SELECT id::text id, source_file_id::text, operation, byte_count::text, actor, occurred_at::text
+    FROM source_file_event ORDER BY id`;
+  const financialProofs = await sql`SELECT entry_id::text,file_version_id::text FROM financial_entry_proof ORDER BY entry_id`;
   const accessControl = await liveFileAccessControl();
   if (!accessControlIsCanonical(accessControl)) throw new FileRepositoryError("ACL do cofre divergiu.", "unavailable");
   return { format: "tria-file-catalog-v1", accessControl,
-    quota: counter, documents, versions, publications, publicationLinks: links };
+    quota: counter, documents, versions, publications, publicationLinks: links, sourceFiles, sourceEvents, financialProofs };
 }
 
 export async function activeObjectRecords() {

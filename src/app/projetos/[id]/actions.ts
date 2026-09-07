@@ -139,3 +139,23 @@ export async function restoreActivityAction(
     return { status: "unavailable", message: "Não foi possível restaurar a atividade agora." };
   }
 }
+
+export async function editProjectAction(projectId: string, _state: { message: string }, form: FormData): Promise<{ message: string }> {
+  await requireAuthenticatedPage();
+  await assertSameOrigin();
+  if (process.env.TRIA_DEMO_WRITES !== "enabled") return { message: "Gravação desativada." };
+  const title = readText(form, "title");
+  const start = readText(form, "start");
+  const end = readText(form, "end");
+  const revision = readText(form, "revision");
+  if (title.length < 3 || title.length > 200 || !/^\d{1,18}$/.test(revision) || [start,end].some(date => date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)))) || (start && end && start > end)) return { message: "Confira o nome e as datas do projeto." };
+  try {
+    const { getSql } = await import("@/lib/database");
+    await getSql()`SELECT edit_owner_project(${projectId},${title},${start || null}::date,${end || null}::date,${form.get("archived") === "on"},${revision}::bigint)`;
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? error.code : "";
+    return { message: code === "23505" ? "Já existe um projeto com esse nome." : code === "P0001" ? "O projeto mudou. Recarregue para conferir antes de editar." : "Não foi possível salvar. Confira os dados e tente novamente." };
+  }
+  revalidatePath("/", "layout");
+  redirect(projectPath(projectId));
+}

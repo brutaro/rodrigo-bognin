@@ -1,3 +1,7 @@
+import {contractMetrics} from '../contract-domain';
+import { readCashProject, readCashProjects } from "../cash-repository";
+import { aggregateCash, cashMoney, cashResultLabel, costConfirmationLabel } from "../cash-domain";
+import { reimbursementLabel, type ReimbursementStatus } from "../reimbursement-status";
 import "server-only";
 
 import { createHash } from "node:crypto";
@@ -73,12 +77,13 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
       const hours = await tx<{ bm_code: string; seconds: string }[]>`
         SELECT bm_code, coalesce(sum(effective_duration_seconds), 0)::text seconds FROM effective_bm_activity
         WHERE project_id = ${projectId} GROUP BY bm_code ORDER BY bm_code LIMIT ${REPORT_QUERY_LIMIT}`;
-      const [financial] = await tx<{ measurement: string | null; invoiced: string | null; related: string | null; payments: string | null; manual_cost: string | null; manual_invoice: string | null; reported: string | null }[]>`
+      const [financial] = await tx<{ measurement: string | null; invoiced: string | null; related: string | null; payments: string | null; reimbursements: string | null; manual_cost: string | null; manual_invoice: string | null; reported: string | null }[]>`
         SELECT
           (SELECT sum(effective_measured_value)::text FROM effective_bm_activity WHERE project_id = ${projectId}) measurement,
           (SELECT sum(amount)::text FROM effective_fiscal_note WHERE declared_project_id = ${projectId}) invoiced,
           (SELECT sum(verified_related_value)::text FROM effective_fiscal_note WHERE candidate_project_id = ${projectId}) related,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE project_id = ${projectId} AND kind = 'Pagamento') payments,
+          (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE project_id = ${projectId} AND kind = 'Reembolso') reimbursements,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE project_id = ${projectId} AND kind = 'Custo ou valor do projeto') manual_cost,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE project_id = ${projectId} AND kind = 'Nota ou cobrança') manual_invoice,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE project_id = ${projectId} AND kind = 'Valor informado') reported`;
@@ -104,24 +109,39 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
           OR h.before_state->>'declaredProjectId' = ${projectId} OR h.before_state->>'candidateProjectId' = ${projectId}
         ORDER BY h.created_at DESC, h.revision DESC LIMIT ${REPORT_QUERY_LIMIT}`;
       const projectLabels = await tx<{ id: string; title: string }[]>`SELECT id, title FROM project ORDER BY id LIMIT ${REPORT_QUERY_LIMIT}`;
-      enforceReportRows([activities, hours, evidence, activityHistory, fiscalHistory, projectLabels]);
-      return { project, activities, hours, financial, evidence, activityHistory, fiscalHistory, projectLabels };
+      const cashProject=await readCashProject(tx,projectId);
+      const financialDocuments = await tx<Array<{id:string;kind:string;description:string;amount:string;title:string|null;version:number|null;reimbursement:ReimbursementStatus|null}>>`
+        SELECT m.id::text,m.kind,m.description,m.amount_cents::text amount,d.title,v.version,
+          CASE WHEN r.entry_id IS NULL THEN NULL ELSE jsonb_build_object('status',r.status,'receivedOn',r.received_on::text,'revision',r.revision::text) END reimbursement
+        FROM manual_financial_entry m LEFT JOIN financial_entry_proof f ON f.entry_id=m.id
+        LEFT JOIN file_version v ON v.id=f.file_version_id AND v.status='active'
+        LEFT JOIN file_document d ON d.id=v.document_id AND d.status='active'
+        LEFT JOIN current_reimbursement_status r ON r.entry_id=m.id
+        WHERE m.project_id=${projectId} ORDER BY m.created_at,m.id LIMIT ${REPORT_QUERY_LIMIT}`;
+      enforceReportRows([activities, hours, evidence, activityHistory, fiscalHistory, projectLabels, financialDocuments]);
+      const [resource] = await tx`SELECT sum((r->>'amount')::numeric)::text amount FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id CROSS JOIN LATERAL jsonb_array_elements(i.rows) r WHERE r->>'project'=(SELECT coalesce(nullif(resource_source_title,''),title) FROM project WHERE id=${projectId})`;
+      return { project, activities, hours, financial, evidence, activityHistory, fiscalHistory, projectLabels, resource, financialDocuments, cashProject };
     });
     const draft = {
       kind: "project" as const,
+      cash: data.cashProject.result,
       project: { id: data.project.id, title: data.project.title, period: period(data.project.date_start, data.project.date_end), narrative: data.project.narrative },
       activities: data.activities.map((row) => ({ id: row.id, description: assertReportCell(row.description || row.functionality || "Atividade registrada"), bm: row.bm_code,
         sourceHours: formatDuration(row.source_duration_seconds), effectiveHours: formatDuration(row.effective_duration_seconds),
         sourceMeasurement: formatBrlDecimal(row.source_measured_value), effectiveMeasurement: formatBrlDecimal(row.effective_measured_value),
         revision: row.adjustment_revision, provenance: provenance(row) })),
+      financialDocuments: data.financialDocuments.map(row=>({kind:row.kind,description:assertReportCell(row.description)+(data.cashProject.entries.find(e=>e.id===row.id)?.confirmation ? ` · ${costConfirmationLabel(row.kind,data.cashProject.entries.find(e=>e.id===row.id)?.confirmation)}` : "")+(row.kind === "Reembolso" ? ` · ${reimbursementLabel(row.reimbursement ?? undefined)}` : ""),amount:formatCents(row.amount),document:row.title ? `${assertReportCell(row.title)} · V${row.version}` : "Sem arquivo associado"})),
       hoursByBm: data.hours.map((row) => ({ label: row.bm_code, value: numberFromSeconds(row.seconds), displayValue: formatDuration(row.seconds) })),
       financialUniverses: [
+        ...(data.cashProject.contract?contractMetrics(data.cashProject.contract).map(item=>({...item,explanation:"Contrato declarado: contratado menos recebimentos ativos. Referência: "+assertReportCell(data.cashProject.contract!.reference)})):[]),
+        { name: "Base consolidada de recursos", value: formatBrlDecimal(data.resource.amount), explanation: "Aplicação registrada na planilha vigente. Referência separada; não somar às medições, notas ou pagamentos." },
         { name: "Medição de atividades", value: formatBrlDecimal(data.financial.measurement), explanation: "Valor efetivo medido nas atividades." },
         { name: "NFS-e declaradas", value: formatBrlDecimal(data.financial.invoiced), explanation: "Valor bruto fiscal declarado para o projeto." },
         { name: "Relação auditada", value: formatBrlDecimal(data.financial.related), explanation: "Valor relacionado verificado para o candidato auditado." },
         { name: "Custo manual do projeto", value: formatCents(data.financial.manual_cost), explanation: "Cadastro manual de custo ou valor." },
         { name: "Nota ou cobrança manual", value: formatCents(data.financial.manual_invoice), explanation: "Cadastro manual; não substitui o universo fiscal." },
-        { name: "Pagamento", value: formatCents(data.financial.payments), explanation: "Pagamento informado, sem inferência a partir de nota ou medição." },
+        { name: "Reembolsos cadastrados (originais)", value: formatCents(data.financial.reimbursements), explanation: "Todos os lançamentos originais, inclusive desconsiderados. O recebido vigente está no resultado de caixa." },
+        { name: "Pagamentos cadastrados (originais)", value: formatCents(data.financial.payments), explanation: "Todos os lançamentos originais, inclusive desconsiderados. A saída confirmada está no resultado de caixa." },
         { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Valor informado por Rodrigo." },
       ],
       evidence: data.evidence.map((row, index) => ({ code: `EVD-${String(index + 1).padStart(3, "0")}`, type: row.file_type ?? "Arquivo", status: row.status })),
@@ -187,18 +207,23 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
           (SELECT sum(verified_related_value)::text FROM effective_fiscal_note n WHERE n.candidate_project_id = p.id) related,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry m WHERE m.project_id = p.id AND m.kind = 'Pagamento') payments
         FROM project p LEFT JOIN project_draft d ON d.project_id = p.id ORDER BY p.title LIMIT ${REPORT_QUERY_LIMIT}`;
-      const [financial] = await tx<{ measurement: string | null; invoiced: string | null; related: string | null; payments: string | null; manual_cost: string | null; manual_invoice: string | null; reported: string | null }[]>`
+      const [financial] = await tx<{ measurement: string | null; invoiced: string | null; related: string | null; payments: string | null; reimbursements: string | null; manual_cost: string | null; manual_invoice: string | null; reported: string | null }[]>`
         SELECT (SELECT sum(effective_measured_value)::text FROM effective_bm_activity) measurement,
           (SELECT sum(amount)::text FROM effective_fiscal_note) invoiced,
           (SELECT sum(verified_related_value)::text FROM effective_fiscal_note) related,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Pagamento') payments,
+          (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Reembolso') reimbursements,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Custo ou valor do projeto') manual_cost,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Nota ou cobrança') manual_invoice,
           (SELECT sum(amount_cents)::text FROM manual_financial_entry WHERE kind = 'Valor informado') reported`;
       enforceReportRows([statuses, trend, portfolio]);
-      return { meta, statuses, trend, portfolio, financial };
+      const [resource] = await tx`SELECT sum((r->>'amount')::numeric)::text amount FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id CROSS JOIN LATERAL jsonb_array_elements(i.rows) r`;
+      const cashProjects=await readCashProjects(tx);
+      return { cashProjects, meta, statuses, trend, portfolio, financial, resource };
     });
     const draft = { kind: "global" as const,
+      cash: aggregateCash(data.cashProjects.map(p=>p.result)),
+      projectCash: data.cashProjects.filter(p=>p.review).map(p=>({title:assertReportCell(p.title),result:p.result.resultCents===null ? "Não calculável" : `${cashResultLabel(p.result)}: ${cashMoney(p.result.resultCents)}`,cutoff:p.review?.cutoffDate ?? "Não conferido"})),
       coverage: [{ label: "Projetos", value: data.meta.projects }, { label: "Atividades", value: data.meta.activities }, { label: "NFS-e", value: data.meta.notes }, { label: "Evidências", value: data.meta.evidence }, { label: "Revisões de ajuste", value: data.meta.adjusted }],
       statuses: data.statuses.map((row) => ({ label: row.status, value: Number(row.count), displayValue: row.count })),
       trend: fillMonthlyTrend(data.trend).map((row) => ({ label: row.month_label, value: numberFromSeconds(row.seconds), displayValue: formatDuration(row.seconds) })),
@@ -206,13 +231,15 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
         effectiveHours: formatDuration(row.seconds), measurement: formatBrlDecimal(row.measurement), invoiced: formatBrlDecimal(row.invoiced),
         related: formatBrlDecimal(row.related), payments: formatCents(row.payments) })),
       financialUniverses: [
+        { name: "Base consolidada de recursos", value: formatBrlDecimal(data.resource.amount), explanation: "Aplicação registrada na planilha vigente. Referência separada; não somar às medições, notas ou pagamentos." },
         { name: "Medição de atividades", value: formatBrlDecimal(data.financial.measurement), explanation: "Soma somente do universo de medição efetiva." },
         { name: "NFS-e brutas", value: formatBrlDecimal(data.financial.invoiced), explanation: "Soma somente do universo fiscal." },
         { name: "Relação auditada", value: formatBrlDecimal(data.financial.related), explanation: "Soma somente dos valores relacionados verificados." },
         { name: "Custo manual do projeto", value: formatCents(data.financial.manual_cost), explanation: "Soma somente dos custos/valores cadastrados manualmente." },
         { name: "Nota ou cobrança manual", value: formatCents(data.financial.manual_invoice), explanation: "Soma somente das notas/cobranças manuais; não substitui NFS-e." },
         { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Soma somente dos valores informados por Rodrigo." },
-        { name: "Pagamentos", value: formatCents(data.financial.payments), explanation: "Soma somente dos pagamentos manuais informados." },
+        { name: "Reembolsos cadastrados (originais)", value: formatCents(data.financial.reimbursements), explanation: "Todos os lançamentos originais, inclusive desconsiderados. Consulte o caixa confirmado." },
+        { name: "Pagamentos cadastrados (originais)", value: formatCents(data.financial.payments), explanation: "Todos os lançamentos originais, inclusive desconsiderados. Consulte o caixa confirmado." },
       ] };
     enforceReportModelSize(draft);
     const modelHash = hashModel(draft);

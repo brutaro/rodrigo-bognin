@@ -15,7 +15,7 @@ A pilha Docker local está operacional com:
 - publicações imutáveis, versionadas e verificadas por hash;
 - cofre de arquivos opacos com versões, SHA-256, quota de 4.000.000.000 bytes e volume dedicado;
 - inclusão explícita de arquivos na publicação e expurgo destrutivo confirmado;
-- backup ZIP manual, completo e verificável, com restauração somente em destino isolado;
+- backup local completo de banco e arquivos, com verificação e restauração isolada; ZIP adicional somente do cofre;
 - autenticação do único usuário Rodrigo por código permanente e cookie `HttpOnly`/`SameSite=Strict`;
 - exportações HTML autônomo e CSV protegido contra fórmulas;
 - acesso local em `127.0.0.1` e TLS obrigatório fora de loopback;
@@ -85,13 +85,25 @@ No mesmo ambiente Node do contêiner:
 docker compose run --rm --no-deps migrate npm run check
 ```
 
-O comando executa 83 testes, ESLint, TypeScript e o build de produção. O teste PostgreSQL/HTTP é destrutivo e só aceita uma pilha Compose descartável cujo nome comece por `tria-vault-`. Use o procedimento de [`docs/docker-local.md`](docs/docker-local.md); ele se recusa a executar na pilha principal.
+O comando executa a suíte de testes, ESLint, TypeScript e o build de produção. O teste PostgreSQL/HTTP é destrutivo e só aceita uma pilha Compose descartável cujo nome comece por `tria-vault-`. Use o procedimento de [`docs/docker-local.md`](docs/docker-local.md); ele se recusa a executar na pilha principal.
 
 ## Cofre e backup
 
 Na página de cada projeto, Rodrigo pode enviar um arquivo, criar uma nova versão, escolher sua inclusão na próxima publicação e baixar qualquer versão ativa. O expurgo exige o código permanente e o texto `EXCLUIR`. Se o arquivo já foi publicado, o sistema remove a primeira publicação que o contém e todas as versões posteriores do projeto.
 
-O botão **Backup** baixa todos os objetos ativos, `catalog.json` e `manifest.json`. O restore deve ser verificado primeiro em banco e volume isolados. Consulte [`docs/docker-local.md`](docs/docker-local.md).
+A página **Backup** distingue a cópia completa do ZIP somente de arquivos. O ZIP inclui objetos, catálogo e vínculos, mas não substitui o banco.
+
+Para a cópia completa, na pasta `PLANO_B_TRIA`:
+
+```sh
+npm run backup:local
+npm run backup:verify -- .local-backups/<pasta-gerada>
+npm run backup:restore-test -- .local-backups/<pasta-gerada>
+# Após conferir a URL local informada:
+npm run backup:cleanup-test -- .local-backups/<pasta-gerada>
+```
+
+A cópia pausa e retoma a aplicação, inclui todas as tabelas, originais XLSX/CSV/PDF/XML, comprovantes e configurações privadas. A restauração compara o conteúdo das tabelas e cria banco, volume e aplicação separados. O comando de limpeza remove somente esse ambiente temporário e preserva o backup. Os comandos precisam do Docker local; não substituem automaticamente o ambiente em uso. Guarde `.local-backups` em local privado: contém códigos de acesso. Para recuperar apenas o ZIP do cofre, consulte [`docs/docker-local.md`](docs/docker-local.md).
 
 ## Modo demonstrativo
 
@@ -104,3 +116,5 @@ As fixtures fictícias continuam disponíveis somente para testes de domínio. S
 - Somente Railway Hobby como destino externo; sem R2, OCI ou segundo provedor.
 - Sem execução de PBIX, macros, scripts ou consultas de arquivos enviados.
 - Medição, nota, relação, valor informado e pagamento permanecem conceitos distintos.
+
+Estado vigente, formatos aceitos e validações: [operação do MVP](docs/mvp.md).

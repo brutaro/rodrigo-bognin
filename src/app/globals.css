@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f5f7fa;
-  --surface-subtle: #f5f7fa;
-  --foreground: #152033;
-  --ink: #152033;
-  --ink-muted: #5d6879;
-  --border: #dde3ea;
-  --brand: #164c8c;
+  --background: #F5F5EF;
+  --surface-subtle: #F5F5EF;
+  --foreground: #183329;
+  --ink: #183329;
+  --ink-muted: #66726C;
+  --border: #D8DDD7;
+  --brand: #174D3B;
 }
 
 * {
@@ -41,11 +41,29 @@ a:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid rgb(37 99 235 / 35%);
+  outline: 3px solid #CB5C2B;
   outline-offset: 2px;
 }
 
 ::selection {
-  background: #cfe2ff;
-  color: #102a4d;
+  background: #FFF0DE;
+  color: #183329;
+}
+
+@theme {
+  --color-blue-50: #FFF0DE;
+  --color-blue-100: #FBE2CA;
+  --color-blue-200: #E8BC9A;
+  --color-blue-600: #A94722;
+  --color-blue-700: #95401F;
+  --color-blue-800: #80371C;
+  --color-blue-900: #143D30;
+  --color-blue-950: #183329;
+  --color-slate-50: #FBFAF5;
+  --color-slate-100: #F5F5EF;
+  --color-slate-200: #D8DDD7;
+  --color-slate-600: #66726C;
+  --color-slate-700: #385247;
+  --color-slate-800: #244436;
+  --color-slate-900: #183329;
 }

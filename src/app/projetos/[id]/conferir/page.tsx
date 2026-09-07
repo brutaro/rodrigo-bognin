@@ -1,3 +1,7 @@
+import {ContractSummary} from "@/components/contract-summary";
+import { CashSummary } from "@/components/cash-summary";
+import { costConfirmationLabel } from "@/lib/cash-domain";
+import { reimbursementLabel } from "@/lib/reimbursement-status";
 import { requireAuthenticatedPage } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -27,11 +31,11 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
   const notice = typeof query.notice === "string" ? query.notice : undefined;
   const draft = await readProjectDraft(project.id);
   const fileDocuments = isDatabaseConfigured() ? await listProjectFiles(project.id) : [];
-  const publishedFiles = currentPublishedFiles(fileDocuments);
+  const publishedFiles = currentPublishedFiles(fileDocuments,draft.manualFinancialEntries.flatMap(entry=>entry.proofVersionId ? [entry.proofVersionId] : []));
   const publications = await listProjectPublications(project.id);
   const pendingEvidence = project.evidence.filter((item) => item.availability === "Pendente");
   const undocumentedPayments = draft.manualFinancialEntries.filter(
-    (entry) => entry.kind === "Pagamento" && entry.documentState === "Sem arquivo associado",
+    (entry) => ["Pagamento","Reembolso"].includes(entry.kind) && entry.documentState === "Sem arquivo associado",
   );
   const uncertainReferences = project.financialReferences.filter(
     (entry) => entry.relation === "Fraca" || entry.relation === "Sem relação confirmada",
@@ -64,6 +68,8 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
             </section>
 
             <Notice code={notice} />
+            {draft.contract && <ContractSummary contract={draft.contract} />}
+            {draft.cash && <CashSummary result={draft.cash} />}
 
             <section aria-labelledby="preview-narrative" className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-sm">
               <h2 id="preview-narrative" className="text-xl font-bold text-[var(--ink)]">O que foi feito</h2>
@@ -80,7 +86,7 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
               <div className="border-b border-[var(--border)] p-5"><h2 id="preview-financial" className="text-xl font-bold text-[var(--ink)]">Referências financeiras</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">As naturezas não são somadas automaticamente.</p></div>
               <div className="divide-y divide-[var(--border)]">
                 {project.financialReferences.map((item) => <article key={item.id} className="p-5"><div className="flex flex-col justify-between gap-4 sm:flex-row"><div><p className="text-xs font-bold uppercase text-[var(--brand)]">Referência importada · {item.kind}</p><h3 className="mt-1 font-semibold">{item.label}</h3><dl className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2"><div><dt>Base do vínculo</dt><dd className="font-semibold">{item.relationBasis ?? "Não informada"}</dd></div><div><dt>Relação</dt><dd className="font-semibold">{item.relation}</dd></div><div><dt>Valor relacionado</dt><dd className="font-semibold">{item.relatedAmount ?? "Não informado"}</dd></div><div><dt>Valor integral elegível</dt><dd className="font-semibold">{item.fullValueEligible === true ? "Sim" : item.fullValueEligible === false ? "Não" : "Não avaliado"}</dd></div><div><dt>Pagamento</dt><dd className="font-semibold">{item.payment}</dd></div></dl></div><div className="sm:text-right"><span className="text-xs text-slate-500">Valor bruto da nota</span><strong className="block">{item.amount}</strong></div></div></article>)}
-                {draft.manualFinancialEntries.map((item) => <article key={item.id} className="border-l-4 border-l-blue-400 p-5"><div className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase text-blue-800">Cadastro manual · {item.kind}</p><h3 className="mt-1 font-semibold">{item.description}</h3><p className="mt-2 text-xs text-slate-500">{item.origin} · {item.documentState}</p></div><strong>{formatBrlFromCents(item.amountCents)}</strong></div></article>)}
+                {draft.manualFinancialEntries.map((item) => <article key={item.id} className="border-l-4 border-l-[#CB5C2B] p-5"><div className="flex justify-between gap-4"><div><p className="text-xs font-bold uppercase text-blue-800">Cadastro manual · {item.kind}</p><h3 className="mt-1 font-semibold">{item.description}</h3><p className="mt-2 text-xs text-slate-500">{item.origin} · {item.documentState}{item.confirmation ? ` · ${costConfirmationLabel(item.kind,item.confirmation)}` : ""}{item.kind === "Reembolso" ? ` · ${reimbursementLabel(item.reimbursement)}` : ""}{item.proofVersionId ? ` · ${publishedFiles.find(file=>file.versionId===item.proofVersionId)?.title ?? "Comprovante"}` : ""}</p></div><strong>{formatBrlFromCents(item.amountCents)}</strong></div></article>)}
                 {!project.financialReferences.length && !draft.manualFinancialEntries.length ? <p className="p-5 text-sm text-slate-500">Nenhuma referência financeira.</p> : null}
               </div>
             </section>
@@ -104,7 +110,7 @@ export default async function ReviewProjectPage({ params, searchParams }: PagePr
                 <li className="flex gap-3"><span aria-hidden className={canPublish ? "text-emerald-700" : "text-red-700"}>{canPublish ? "✓" : "!"}</span><span>Narrativa com contexto suficiente.</span></li>
                 <li className="flex gap-3"><span aria-hidden className="text-emerald-700">✓</span><span>{project.activities.length} atividade(s) identificada(s).</span></li>
                 <li className="flex gap-3"><span aria-hidden className={pendingEvidence.length ? "text-amber-700" : "text-emerald-700"}>{pendingEvidence.length ? "!" : "✓"}</span><span>{pendingEvidence.length ? `${pendingEvidence.length} evidência(s) pendente(s), com situação preservada.` : "Evidências disponíveis."}</span></li>
-                <li className="flex gap-3"><span aria-hidden className={undocumentedPayments.length ? "text-amber-700" : "text-emerald-700"}>{undocumentedPayments.length ? "!" : "✓"}</span><span>{undocumentedPayments.length ? `${undocumentedPayments.length} pagamento(s) informado(s) sem arquivo.` : "Nenhum pagamento manual sem arquivo."}</span></li>
+                <li className="flex gap-3"><span aria-hidden className={undocumentedPayments.length ? "text-amber-700" : "text-emerald-700"}>{undocumentedPayments.length ? "!" : "✓"}</span><span>{undocumentedPayments.length ? `${undocumentedPayments.length} pagamento(s) ou reembolso(s) sem arquivo.` : "Nenhum pagamento ou reembolso manual sem arquivo."}</span></li>
                 <li className="flex gap-3"><span aria-hidden className={uncertainReferences.length ? "text-amber-700" : "text-emerald-700"}>{uncertainReferences.length ? "!" : "✓"}</span><span>{uncertainReferences.length ? `${uncertainReferences.length} referência(s) sem vínculo forte; não serão tratadas como comprovação.` : "Relações financeiras identificadas."}</span></li>
               </ul>
             </section>

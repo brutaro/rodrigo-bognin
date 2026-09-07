@@ -12,12 +12,17 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:import": "node scripts/import-real-data.mjs",
     "db:validate": "node scripts/validate-database.mjs",
-    "test:integration": "node scripts/integration-smoke.mjs",
+    "test:integration": "node scripts/verify-local-app.mjs",
+    "test:integration:story-3-3": "bash scripts/story-3-3-isolated-integration.sh",
     "files:import-evidence": "node scripts/import-evidence-files.mjs",
     "release:scan": "node scripts/scan-release.mjs",
     "origin:verify": "node scripts/verify-protected-origin.mjs",
     "railway:check": "tsc --noEmit --module nodenext --moduleResolution nodenext --target es2022 --skipLibCheck .railway/railway.ts",
-    "test:ci-integration": "bash scripts/ci-isolated-integration.sh"
+    "test:ci-integration": "bash scripts/story-3-3-ci-integration.sh",
+    "backup:local": "node scripts/local-backup.mjs create",
+    "backup:verify": "node scripts/local-backup.mjs verify",
+    "backup:restore-test": "node scripts/local-backup.mjs restore-test",
+    "backup:cleanup-test": "node scripts/local-backup.mjs cleanup-test"
   },
   "dependencies": {
     "@react-pdf/renderer": "4.9.0",
@@ -27,7 +32,9 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "yauzl": "^3.4.0",
-    "yazl": "^3.3.1"
+    "yazl": "^3.3.1",
+    "zod": "4.5.2",
+    "pdfjs-dist": "5.4.624"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -38,7 +45,7 @@
     "@types/yazl": "^3.3.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
-    "pdfjs-dist": "5.4.624",
+    "playwright": "1.62.1",
     "railway": "3.11.0",
     "tailwindcss": "^4",
     "typescript": "^5",

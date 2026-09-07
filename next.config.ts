@@ -6,7 +6,10 @@ const projectRoot = dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   output: "standalone",
-  serverExternalPackages: ["@react-pdf/renderer"],
+  serverExternalPackages: ["@react-pdf/renderer", "pdfjs-dist"],
+  outputFileTracingIncludes: {
+    "/api/sources/fiscal-pdf/*/suggestions": ["./node_modules/pdfjs-dist/legacy/build/*.mjs", "./node_modules/@napi-rs/canvas*/**/*"],
+  },
   turbopack: {
     root: projectRoot,
   },

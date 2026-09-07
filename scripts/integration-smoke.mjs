@@ -328,6 +328,94 @@ try {
   });
   const rejectedObjects = (await fs.readdir(path.join(process.env.TRIA_FILE_STORE_PATH ?? "/data/files", "objects"))).length;
   assert(rejectedUpload.status === 404 && rejectedObjects === initialObjects, "upload rejeitado deixou objeto órfão");
+
+  const sourcePage = await http("/fontes/base-consolidada", { headers: { Cookie: cookie } });
+  const sourcePageHtml = await sourcePage.text();
+  assert(sourcePage.status === 200 && sourcePageHtml.includes("Base consolidada de aplicação de recursos") &&
+    sourcePageHtml.includes("Arquivo sintético"), "página autenticada da fonte consolidada não abriu");
+  const sourceStoreRoot = process.env.TRIA_FILE_STORE_PATH ?? "/data/files";
+  const [sourceBefore] = await app`SELECT
+    (SELECT count(*)::int FROM source_file) sources,
+    (SELECT count(*)::int FROM file_document WHERE document_kind = 'source') documents,
+    (SELECT count(*)::int FROM file_version v JOIN file_document d ON d.id = v.document_id WHERE d.document_kind = 'source') versions,
+    (SELECT reserved_bytes::text FROM file_store_counter WHERE singleton) reserved,
+    (SELECT used_bytes::text FROM file_store_counter WHERE singleton) used,
+    (SELECT revision::text FROM project_draft WHERE project_id = ${project.id}) project_revision`;
+  const sourceObjectsBefore = (await fs.readdir(path.join(sourceStoreRoot, "objects"))).length;
+  for (const invalidName of ["base.xlsm", "base.xlsb", "base.zip", "base.exe", "base.xlsx.csv", "base.csv.exe", "base%00.csv"]) {
+    const invalidSource = await http("/api/sources/consolidated", {
+      method: "POST", body: Buffer.from("x"), headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "application/octet-stream",
+        "X-TRIA-File-Name": invalidName, "X-TRIA-File-Size": "1" },
+    });
+    assert(invalidSource.status === 400, `fonte inválida foi aceita: ${invalidName}`);
+  }
+  const divergentSource = await http("/api/sources/consolidated", {
+    method: "POST", body: Buffer.from("x"), headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "text/csv",
+      "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": "2" },
+  });
+  const oversizedSource = await http("/api/sources/consolidated", {
+    method: "POST", body: Buffer.from("x"), headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "text/csv",
+      "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": String(50 * 1024 * 1024 + 1) },
+  });
+  assert(divergentSource.status === 400 && oversizedSource.status === 413, "tamanho divergente ou excessivo da fonte não falhou fechado");
+  const [sourceAfterInvalid] = await app`SELECT
+    (SELECT count(*)::int FROM source_file) sources,
+    (SELECT count(*)::int FROM file_document WHERE document_kind = 'source') documents,
+    (SELECT count(*)::int FROM file_version v JOIN file_document d ON d.id = v.document_id WHERE d.document_kind = 'source') versions,
+    (SELECT reserved_bytes::text FROM file_store_counter WHERE singleton) reserved,
+    (SELECT used_bytes::text FROM file_store_counter WHERE singleton) used`;
+  assert(sourceAfterInvalid.sources === sourceBefore.sources && sourceAfterInvalid.documents === sourceBefore.documents &&
+    sourceAfterInvalid.versions === sourceBefore.versions && sourceAfterInvalid.reserved === sourceBefore.reserved &&
+    sourceAfterInvalid.used === sourceBefore.used &&
+    (await fs.readdir(path.join(sourceStoreRoot, "objects"))).length === sourceObjectsBefore,
+    "fonte inválida deixou catálogo, reserva, quota ou objeto órfão");
+
+  const sourcePayload = Buffer.from(`fixture-consolidada-opaca-${crypto.randomUUID()}\n`, "utf8");
+  const sourceUpload = await http("/api/sources/consolidated", {
+    method: "POST", body: sourcePayload, headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "application/x-unexpected",
+      "X-TRIA-File-Name": encodeURIComponent("FIXTURE.XLSX"), "X-TRIA-File-Size": String(sourcePayload.length) },
+  });
+  const sourceReceipt = await sourceUpload.json();
+  assert(sourceUpload.status === 201 && sourceUpload.headers.get("cache-control")?.includes("no-store") &&
+    JSON.stringify(Object.keys(sourceReceipt).sort()) === JSON.stringify(["format", "receiptId", "receivedAt", "sizeBytes", "status"].sort()) &&
+    sourceReceipt.format === "XLSX" && sourceReceipt.sizeBytes === sourcePayload.length && sourceReceipt.status === "protected",
+    `recibo sanitizado da fonte divergiu: ${sourceUpload.status}`);
+  const [storedSource] = await app`SELECT sf.id::text source_id, sf.source_format, sf.received_by, sf.received_at::text,
+      d.id::text document_id, d.document_kind, d.project_id, d.include_in_publication, d.title,
+      v.id::text version_id, v.object_key::text object_key, v.original_name, v.media_type, v.size_bytes::text, v.sha256,
+      (SELECT count(*)::int FROM source_file_event e WHERE e.source_file_id = sf.id AND e.operation = 'source.file.received.v1') events,
+      (SELECT revision::text FROM project_draft WHERE project_id = ${project.id}) project_revision
+    FROM source_file sf JOIN file_document d ON d.id = sf.document_id JOIN file_version v ON v.id = sf.file_version_id
+    WHERE sf.id = ${sourceReceipt.receiptId}::uuid`;
+  const sourceStoredBytes = await fs.readFile(path.join(sourceStoreRoot, "objects", storedSource.object_key));
+  const sourceStoredHash = (await import("node:crypto")).createHash("sha256").update(sourceStoredBytes).digest("hex");
+  assert(storedSource.source_id === sourceReceipt.receiptId && storedSource.source_format === "xlsx" && storedSource.received_by === "Rodrigo" &&
+    storedSource.document_kind === "source" && storedSource.project_id === null && storedSource.include_in_publication === false &&
+    storedSource.title === "Base consolidada de aplicação de recursos" && storedSource.original_name === "FIXTURE.XLSX" &&
+    storedSource.media_type === "application/x-unexpected" && Number(storedSource.size_bytes) === sourcePayload.length &&
+    sourceStoredBytes.equals(sourcePayload) && sourceStoredHash === storedSource.sha256 && storedSource.events === 1 &&
+    storedSource.project_revision === sourceBefore.project_revision,
+    "bytes, hash, identidade, evento ou isolamento da fonte divergiram");
+  const sourceDownload = await http(`/api/files/${storedSource.version_id}/download`, { headers: { Cookie: cookie } });
+  const sourcePublication = await http(`/api/files/${storedSource.document_id}/publication`, {
+    method: "POST", headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "application/json" }, body: JSON.stringify({ include: true }),
+  });
+  const projectAfterSource = await http(`/projetos/${encodeURIComponent(project.id)}`, { headers: { Cookie: cookie } });
+  assert(sourceDownload.status === 404 && sourcePublication.status === 404 && !(await projectAfterSource.text()).includes("FIXTURE.XLSX"),
+    "fonte consolidada escapou para download, publicação ou projeto");
+  let sourceMutationDenied = false;
+  try { await app`UPDATE source_file SET received_at = received_at WHERE id = ${sourceReceipt.receiptId}::uuid`; }
+  catch (error) { sourceMutationDenied = error?.code === "42501"; }
+  const sourceAcl = await admin`SELECT table_name, grantee, privilege_type privilege FROM information_schema.role_table_grants
+    WHERE table_schema = 'public' AND table_name IN ('source_file', 'source_file_event') AND grantee <> 'tria_migrator'
+    ORDER BY table_name, grantee, privilege_type`;
+  const sourceAclTuples = sourceAcl.map((row) => `${row.table_name}|${row.grantee}|${row.privilege}`);
+  assert(sourceMutationDenied && JSON.stringify(sourceAclTuples) === JSON.stringify([
+    "source_file|tria_app|INSERT", "source_file|tria_app|SELECT",
+    "source_file_event|tria_app|INSERT", "source_file_event|tria_app|SELECT",
+  ]),
+    "ACL mínima e append-only da fonte divergiram");
+
   await app`UPDATE project_draft SET narrative = 'Narrativa temporária da integração isolada com composição verificável.',
     revision = revision + 1, updated_at = now() WHERE project_id = ${project.id}`;
   const payload = Buffer.from(`arquivo-integracao-${crypto.randomUUID()}
@@ -496,6 +584,11 @@ try {
 
   await fs.writeFile(sentinel, `${crypto.randomUUID()}\n`);
   assert((await http("/api/health")).status === 503, "sentinel trocado não derrubou readiness");
+  const sourceWhileStoreUnavailable = await http("/api/sources/consolidated", {
+    method: "POST", body: Buffer.from("x"), headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "text/csv",
+      "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": "1" },
+  });
+  assert(sourceWhileStoreUnavailable.status === 503, "fonte não falhou fechado com storage indisponível");
   await fs.writeFile(sentinel, `${volumeUuid}\n`);
   assert((await http("/api/health")).status === 200, "readiness não recuperou após sentinel correto");
 
@@ -504,7 +597,11 @@ try {
     method: "POST", body: Buffer.from("x"), headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "application/octet-stream",
       "X-TRIA-File-Name": "quota.bin", "X-TRIA-File-Title": "Quota" },
   });
-  assert(quotaUpload.status === 413 && (await http("/api/health")).status === 503, "quota cheia não foi fail-closed");
+  const sourceQuotaUpload = await http("/api/sources/consolidated", {
+    method: "POST", body: Buffer.from("x"), headers: { Cookie: cookie, Origin: browserOrigin, "Content-Type": "text/csv",
+      "X-TRIA-File-Name": "fixture.csv", "X-TRIA-File-Size": "1" },
+  });
+  assert(quotaUpload.status === 413 && sourceQuotaUpload.status === 413 && (await http("/api/health")).status === 503, "quota cheia não foi fail-closed");
   await admin`UPDATE file_store_counter SET reserved_bytes = 0 WHERE singleton`;
   assert((await http("/api/health")).status === 200, "readiness não recuperou após liberar quota");
 
@@ -526,12 +623,15 @@ try {
   const eventNames = new Set(events.map((event) => event.operation));
   for (const expected of ["upload_version", "publication_include", "download", "backup_prepared", "purge"])
     assert(eventNames.has(expected), `trilha de arquivo ausente: ${expected}`);
+  const [sourceEvent] = await app`SELECT operation, byte_count::text, actor FROM source_file_event WHERE source_file_id = ${sourceReceipt.receiptId}::uuid`;
+  assert(sourceEvent?.operation === "source.file.received.v1" && Number(sourceEvent.byte_count) === sourcePayload.length && sourceEvent.actor === "Rodrigo",
+    "trilha isolada da fonte não foi preservada");
 
   console.log(JSON.stringify({ status: "ok", projects: count, auth: true, throttle: true, upload: true, versions: true,
     explicit_publication_inclusion: true, orphan_reconciliation: true, download_integrity: true, backup_restore: true,
     replacement_volume_denied: true, invalid_volume_readiness: true, quota_fail_closed: true,
     adjustments: true, concurrency_conflict: true, restoration: true, fiscal_atomicity: true, reports_pdf: true, publication_v4: true,
-    corruption_blocked: true, purge_retry: true, purge: true, health: 200 }));
+    corruption_blocked: true, purge_retry: true, purge: true, consolidated_source: true, source_acl: true, health: 200 }));
 } finally {
   await Promise.all([app.end(), admin.end()]);
 }

@@ -1,0 +1,16 @@
+services:
+  migrate:
+    image: tria-local-tools:current
+    build:
+      dockerfile: Dockerfile.local
+      target: tools
+  file-init:
+    image: tria-local-tools:current
+    build:
+      dockerfile: Dockerfile.local
+      target: tools
+  app:
+    image: tria-local-app:current
+    build:
+      dockerfile: Dockerfile.local
+      target: runner

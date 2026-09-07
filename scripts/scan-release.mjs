@@ -9,8 +9,22 @@ const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
 const forbiddenDirectory = /(^|\/)(\.secrets|uploads?|evidence-import|bootstrap-data|backups?|dumps?|sources?|dados?|evidencias?)(\/|$)/i;
 const forbiddenExtension = /\.(csv|pdf|docx?|xlsx?|xlsb|xlsm|pptx?|pbix|png|jpe?g|gif|webp|tiff?|bmp|zip|7z|tar|gz|sql|dump)$/i;
 const allowedBinaryAssets = new Set([
-  "src/app/favicon.ico", "public/file.svg", "public/vercel.svg", "public/next.svg", "public/globe.svg", "public/window.svg",
+  "src/app/favicon.ico", "public/tria.png", "public/file.svg", "public/vercel.svg", "public/next.svg", "public/globe.svg", "public/window.svg",
   "public/report-fonts/noto-sans-latin-400-normal.woff", "public/report-fonts/noto-sans-latin-700-normal.woff",
+]);
+const allowedSourceCode = new Set([
+  "src/app/backup/page.tsx",
+  "src/app/api/sources/consolidated/route.test.ts",
+  "src/app/api/sources/consolidated/route.ts",
+  "src/app/api/sources/fiscal/route.ts",
+  "src/app/api/sources/fiscal-pdf/[id]/route.ts",
+  "src/app/api/sources/fiscal-pdf/[id]/suggestions/route.test.ts",
+  "src/app/api/sources/fiscal-pdf/[id]/suggestions/route.ts",
+  "src/app/api/sources/fiscal-pdf/route.ts",
+  "src/app/api/sources/fiscal-xml/[id]/route.ts",
+  "src/app/api/sources/fiscal-xml/route.ts",
+  "src/app/api/sources/resources/export/route.ts",
+  "src/app/api/sources/resources/route.ts",
 ]);
 const secretPatterns = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
@@ -21,6 +35,7 @@ const secretPatterns = [
 export function pathViolation(relative) {
   const clean = relative.replaceAll("\\", "/").replace(/^\.\//, "");
   if (clean.startsWith(".git/") || clean.startsWith("node_modules/") || clean.startsWith(".next/")) return "ignored";
+  if (allowedSourceCode.has(clean)) return null;
   if (forbiddenDirectory.test(clean) && !clean.startsWith("src/app/api/backups/")) return "diretório de dado/secret proibido";
   if (clean.startsWith("db/migrations/") && clean.endsWith(".sql")) return null;
   if ((forbiddenExtension.test(clean) || /\.(ico|woff2?)$/i.test(clean)) && !allowedBinaryAssets.has(clean)) return "tipo binário/dado fora da allowlist";

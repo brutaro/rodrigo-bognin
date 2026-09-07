@@ -19,6 +19,8 @@ export default defineRailway(() => {
     volumeMounts: { "/data/files": vault },
     env: {
       TRIA_RUNTIME: "railway",
+      TRIA_CONSOLIDATED_SOURCE_UPLOAD: "authenticated-owner",
+      TRIA_RELEASE_SHA: preserve(),
       TRIA_INSTANCE_NAMESPACE: "tria-production",
       TRIA_TRUST_PROXY: "enabled",
       TRIA_PUBLIC_HOSTS: "tria-production-1710.up.railway.app",

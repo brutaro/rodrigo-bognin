@@ -4,7 +4,7 @@ import { sessionCookieName, sessionIdHash, verifySessionTokenPayload } from "./l
 import { getSql, isDatabaseConfigured } from "./lib/database";
 import { boundaryAllowsRequest, resolveRequestBoundary } from "./lib/request-boundary";
 
-const publicAssets = new Set(["/favicon.ico", "/file.svg", "/vercel.svg", "/next.svg", "/globe.svg", "/window.svg"]);
+const publicAssets = new Set(["/tria.png", "/favicon.ico", "/file.svg", "/vercel.svg", "/next.svg", "/globe.svg", "/window.svg"]);
 export function isPublicPath(pathname: string) {
   return pathname === "/entrar" || pathname === "/api/health" || pathname.startsWith("/_next/") || publicAssets.has(pathname);
 }

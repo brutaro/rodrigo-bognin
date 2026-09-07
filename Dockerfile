@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 FROM node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5 AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -25,7 +24,7 @@ ENV NODE_ENV=production \
     PORT=3000
 RUN groupmod -g 1001 node && usermod -u 1001 -g 1001 node \
   && apt-get update \
-  && apt-get install -y --no-install-recommends util-linux \
+  && apt-get install -y --no-install-recommends util-linux tesseract-ocr tesseract-ocr-por poppler-utils \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /data/files \
   && chown 1001:1001 /data/files

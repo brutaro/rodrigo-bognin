@@ -7,7 +7,9 @@ printf aa > "$evidence/a.any"; printf bbb > "$evidence/b.any"
 printf '%s\n' 'synthetic-admin-password-01' > "$secrets/admin"; printf '%s\n' 'synthetic-app-password-02' > "$secrets/app"
 printf '%s\n' 'synthetic-migrator-password-03' > "$secrets/migrator"; printf '%s\n' 'synthetic-importer-password-04' > "$secrets/importer"
 printf '%s\n' 'synthetic-login-code' > "$secrets/login"; printf '%s\n' 'synthetic-session-key-with-at-least-32-bytes' > "$secrets/session"
-printf '%s\n' '22222222-2222-4222-8222-222222222222' > "$secrets/uuid"; chmod 600 "$secrets"/*
+printf '%s\n' '22222222-2222-4222-8222-222222222222' > "$secrets/uuid"; chmod 444 "$secrets"/*
+# Apenas fixtures descartáveis: bind mounts do Compose preservam o modo no Linux.
+# O diretório temporário 0700 protege os arquivos no host; PostgreSQL usa outro UID.
 cat > "$temp/secrets.yaml" <<YAML
 secrets:
   db_admin_password: { file: "$secrets/admin" }
@@ -17,6 +19,11 @@ secrets:
   tria_login_code: { file: "$secrets/login" }
   tria_session_key: { file: "$secrets/session" }
   file_store_uuid: { file: "$secrets/uuid" }
+services:
+  migrate: { image: "tria-tools:${namespace}" }
+  file-init: { image: "tria-tools:${namespace}" }
+  evidence-tool: { image: "tria-tools:${namespace}" }
+  app: { image: "tria-app:${namespace}" }
 YAML
 compose=(docker compose -p "$namespace" -f "$root/compose.yaml" -f "$root/compose.synthetic.yaml" -f "$temp/secrets.yaml")
 cleanup() {
@@ -33,6 +40,7 @@ cleanup() {
   "${compose[@]}" stop >/dev/null 2>&1 || true; "${compose[@]}" rm -f >/dev/null 2>&1 || true
   for suffix in postgres_data file_data next_cache; do volume="${namespace}_${suffix}"; label="$(docker volume inspect -f '{{ index .Labels "com.docker.compose.project" }}' "$volume" 2>/dev/null || true)"; [[ "$label" == "$namespace" ]] && docker volume rm "$volume" >/dev/null || true; done
   network="${namespace}_default"; label="$(docker network inspect -f '{{ index .Labels "com.docker.compose.project" }}' "$network" 2>/dev/null || true)"; [[ "$label" == "$namespace" ]] && docker network rm "$network" >/dev/null || true
+  docker image rm "tria-tools:${namespace}" "tria-app:${namespace}" "tria:${namespace}" >/dev/null 2>&1 || true
   rm -rf "$temp"
   exit "$status"
 }

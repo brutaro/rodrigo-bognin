@@ -1,5 +1,6 @@
 import "server-only";
 
+import { readCashProject } from "./cash-repository";
 import { randomUUID } from "node:crypto";
 import {
   addDemoFinancialEntry,
@@ -63,32 +64,23 @@ export function buildWorkspaceCompositionHash(
 export async function readProjectDraft(projectId: string): Promise<DemoProjectDraft> {
   if (!isDatabaseConfigured()) return readDemoProjectDraft(projectId);
   const sql = getSql();
-  const { draftRows, entries, history } = await sql.begin("read only isolation level repeatable read", async (tx) => {
+  const { draftRows, financial, history } = await sql.begin("read only isolation level repeatable read", async (tx) => {
     const draftRows = await tx<{ narrative: string; revision: string; updated_at: string | null }[]>`
       SELECT narrative, revision::text, updated_at::text FROM project_draft WHERE project_id = ${projectId}`;
-    const entries = await tx<{ id: string; kind: ManualFinancialKind; description: string; amount_cents: string; origin: FinancialOrigin; document_state: ManualFinancialEntry["documentState"]; request_id: string; created_at: string }[]>`
-      SELECT id::text, kind, description, amount_cents::text, origin, document_state, request_id::text, created_at::text
-      FROM manual_financial_entry WHERE project_id = ${projectId} ORDER BY created_at, id`;
+    const financial = await readCashProject(tx,projectId);
     const history = await tx<{ id: string; action: string; detail: string; actor: string; occurred_at: string }[]>`
       SELECT id::text, action, detail, actor, occurred_at::text FROM history_event
       WHERE project_id = ${projectId} ORDER BY occurred_at DESC, id DESC`;
-    return { draftRows, entries, history };
+    return { draftRows, financial, history };
   });
   if (!draftRows[0]) throw new Error("Projeto local desconhecido.");
   return {
     narrative: draftRows[0].narrative,
     revision: draftRows[0].revision,
     updatedAt: draftRows[0].updated_at,
-    manualFinancialEntries: entries.map((entry) => ({
-      id: entry.id,
-      kind: entry.kind,
-      description: entry.description,
-      amountCents: entry.amount_cents,
-      origin: entry.origin,
-      documentState: entry.document_state,
-      requestId: entry.request_id,
-      createdAt: entry.created_at,
-    })),
+    manualFinancialEntries: financial.entries,
+    cash: financial.result,
+    contract: financial.contract,
     history: history.map((event) => ({
       id: event.id,
       action: event.action,
@@ -100,10 +92,12 @@ export async function readProjectDraft(projectId: string): Promise<DemoProjectDr
 }
 
 export async function saveNarrative(projectId: string, narrative: string, expectedRevision?: string) {
-  if (!isDatabaseConfigured()) return saveDemoNarrative(projectId, narrative, expectedRevision);
+  if (!isDatabaseConfigured()) { await saveDemoNarrative(projectId, narrative, expectedRevision); return { revision: (BigInt(expectedRevision ?? "0") + 1n).toString() }; }
   const sql = getSql();
   const now = new Date().toISOString();
-  await sql.begin(async (tx) => {
+  return sql.begin(async (tx) => {
+    const [current] = await tx`SELECT narrative, revision::text FROM project_draft WHERE project_id=${projectId} FOR UPDATE`;
+    if (current?.narrative === narrative) return { revision: current.revision as string };
     const updated = await tx`UPDATE project_draft SET narrative = ${narrative}, revision = revision + 1, updated_at = ${now}
       WHERE project_id = ${projectId} AND revision = ${expectedRevision ?? "-1"} RETURNING project_id`;
     if (!updated.length) {
@@ -113,6 +107,7 @@ export async function saveNarrative(projectId: string, narrative: string, expect
     }
     await tx`INSERT INTO history_event (id, project_id, action, detail, actor, occurred_at)
       VALUES (${randomUUID()}, ${projectId}, 'Narrativa salva', 'Uma nova versão do texto foi registrada no ambiente local privado.', ${actor}, ${now})`;
+    return { revision: (BigInt(expectedRevision!) + 1n).toString() };
   });
 }
 
@@ -161,16 +156,16 @@ async function publishProjectInternal(
     // ocorre somente depois dele, para que a composição publicada seja consistente.
     const project = await getProjectDetails(projectId, tx);
     if (!project) throw new Error("Projeto local desconhecido.");
-    const entries = await tx<{ id: string; kind: ManualFinancialKind; description: string; amount_cents: string; origin: FinancialOrigin; document_state: ManualFinancialEntry["documentState"]; created_at: string }[]>`
-      SELECT id::text, kind, description, amount_cents::text, origin, document_state, created_at::text
-      FROM manual_financial_entry WHERE project_id = ${projectId} ORDER BY created_at, id`;
+    const financial = await readCashProject(tx,projectId);
     const fileRows = await tx<{
       document_id: string; version_id: string; title: string; version: number; original_name: string;
       media_type: string; size_bytes: string; sha256: string; object_key: string;
-    }[]>`SELECT DISTINCT ON (d.id) d.id::text document_id, v.id::text version_id, d.title,
+    }[]>`SELECT d.id::text document_id, v.id::text version_id, d.title,
         v.version, v.original_name, v.media_type, v.size_bytes::text, v.sha256, v.object_key::text
       FROM file_document d JOIN file_version v ON v.document_id = d.id
-      WHERE d.project_id = ${projectId} AND d.status = 'active' AND d.include_in_publication AND v.status = 'active'
+      WHERE d.project_id = ${projectId} AND d.status = 'active' AND v.status = 'active'
+        AND ((d.include_in_publication AND v.version=(SELECT max(v2.version) FROM file_version v2 WHERE v2.document_id=d.id AND v2.status='active'))
+          OR EXISTS(SELECT 1 FROM financial_entry_proof f JOIN manual_financial_entry m ON m.id=f.entry_id WHERE f.file_version_id=v.id AND m.project_id=${projectId}))
       ORDER BY d.id, v.version DESC`;
     const publishedFiles: PublishedFile[] = fileRows.map((file) => ({
       documentId: file.document_id, versionId: file.version_id, title: file.title, version: file.version,
@@ -181,10 +176,9 @@ async function publishProjectInternal(
       narrative: draftRows[0].narrative,
       updatedAt: draftRows[0].updated_at,
       history: [],
-      manualFinancialEntries: entries.map((entry) => ({
-        id: entry.id, kind: entry.kind, description: entry.description, amountCents: entry.amount_cents,
-        origin: entry.origin, documentState: entry.document_state, createdAt: entry.created_at,
-      })),
+      manualFinancialEntries: financial.entries,
+      cash: financial.result,
+    contract: financial.contract,
     };
     const priorRows = await tx<{ snapshot: DemoPublication }[]>`
       SELECT snapshot FROM publication WHERE project_id = ${projectId} ORDER BY version DESC LIMIT 1`;

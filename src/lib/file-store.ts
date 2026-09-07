@@ -117,7 +117,8 @@ export async function writeUploadObject(
     return { size, sha256: hash.digest("hex") };
   } catch (error) {
     await handle.close().catch(() => undefined);
-    if (!renamed) await unlink(staging).catch(() => undefined);
+    await unlink(renamed ? destination : staging).catch(() => undefined);
+    await syncDirectory(renamed ? path.dirname(destination) : path.dirname(staging)).catch(() => undefined);
     throw error;
   }
 }

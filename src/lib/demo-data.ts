@@ -1,6 +1,10 @@
 export type ProjectStatus = "Em trabalho" | "Pronto para revisar" | "Publicado";
 
 export type Project = {
+  archived?: boolean;
+  lastOpenedAt?: string | null;
+  sourceName?: string;
+  metadataRevision?: string;
   id: string;
   name: string;
   period: string;

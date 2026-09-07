@@ -56,16 +56,18 @@ jobs:
       - name: Publicar exatamente o commit aprovado
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: npx --yes @railway/cli@5.47.1 up --service tria --ci
+        run: |
+          npx --yes @railway/cli@5.47.1 variable set --service tria --environment production --skip-deploys "TRIA_RELEASE_SHA=$GITHUB_SHA"
+          npx --yes @railway/cli@5.47.1 up --service tria --environment production --ci --message "TRIA commit $GITHUB_SHA"
       - name: Confirmar a nova release, não tráfego antigo
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           EXPECTED_SHA: ${{ github.sha }}
         run: |
           for attempt in $(seq 1 30); do
-            npx --yes @railway/cli@5.47.1 deployment list --service tria --json > "$RUNNER_TEMP/deployments.json"
-            if node -e 'const d=require(process.argv[1])[0]; process.exit(d && d.status === "SUCCESS" && d.meta?.commitHash === process.env.EXPECTED_SHA ? 0 : 1)' "$RUNNER_TEMP/deployments.json"; then
-              node -e 'const d=require(process.argv[1])[0]; console.log(`release Railway confirmada: ${d.id} @ ${d.meta.commitHash}`)' "$RUNNER_TEMP/deployments.json"
+            npx --yes @railway/cli@5.47.1 deployment list --service tria --environment production --json > "$RUNNER_TEMP/deployments.json"
+            if node -e 'const d=require(process.argv[1]).find(d=>d.meta?.cliMessage === `TRIA commit ${process.env.EXPECTED_SHA}`); process.exit(d?.status === "SUCCESS" ? 0 : 1)' "$RUNNER_TEMP/deployments.json"; then
+              node -e 'const d=require(process.argv[1]).find(d=>d.meta?.cliMessage === `TRIA commit ${process.env.EXPECTED_SHA}`); console.log(`release Railway confirmada: ${d.id} @ ${process.env.EXPECTED_SHA}`)' "$RUNNER_TEMP/deployments.json"
               exit 0
             fi
             sleep 10

@@ -40,6 +40,7 @@ services:
     security_opt: ["no-new-privileges:true"]
   app:
     environment:
+      TRIA_CONSOLIDATED_SOURCE_UPLOAD: synthetic-fixtures-only
       TRIA_INTEGRATION_ISOLATED: confirmed
       TRIA_INTEGRATION_NAMESPACE: ${COMPOSE_PROJECT_NAME:?}
       TRIA_EVIDENCE_EXPECTED_PROJECTS: "2"

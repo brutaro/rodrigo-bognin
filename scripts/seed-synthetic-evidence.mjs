@@ -12,6 +12,7 @@ try { await sql.begin(async (tx) => {
     (${evidenceBatch}, 'project_evidence', 'redacted', ${"1".repeat(64)}, 2, 'completed')`;
   await tx`INSERT INTO project (id, source_project_id, title, evidence_status, import_batch_id) VALUES
     ('synthetic-p1', 'synthetic-p1', 'Synthetic P1', 'available', ${batch}), ('synthetic-p2', 'synthetic-p2', 'Synthetic P2', 'available', ${batch})`;
+  await tx`INSERT INTO project_draft (project_id) VALUES ('synthetic-p1'), ('synthetic-p2')`;
   await tx`INSERT INTO evidence_asset (id, sha256, file_type, private_path, batch_id) VALUES
     (${values[0]}, ${values[0]}, 'documento PDF', 'redacted', ${evidenceBatch}), (${values[1]}, ${values[1]}, 'vídeo MP4', 'redacted', ${evidenceBatch})`;
   await tx`INSERT INTO project_evidence (project_id, evidence_asset_id, strength, rule_used, caveat, status, batch_id) VALUES

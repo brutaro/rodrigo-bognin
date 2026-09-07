@@ -48,3 +48,12 @@ next-env.d.ts
 # local Docker secrets
 /.secrets/
 .env.docker
+
+# Story 3.3 disposable harness files must never be versioned
+/scripts/.story-3-3-*
+/.local-backups/
+
+# Relatórios privados da validação local
+/docs/estado-local-2026-09-05.md
+/docs/mvp-local-concluido-2026-09-06.md
+/docs/ocr-xml-contrato-2026-09-06.md
