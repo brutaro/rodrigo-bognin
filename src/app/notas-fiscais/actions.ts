@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { assertSameOrigin, requireAuthenticatedPage } from "@/lib/auth";
-import { adjustFiscalNote, restoreFiscalNote, AdjustmentConflictError, DuplicateFiscalNoteError } from "@/lib/source-adjustment-repository";
+import { deleteFiscalNote, adjustFiscalNote, restoreFiscalNote, AdjustmentConflictError, DuplicateFiscalNoteError } from "@/lib/source-adjustment-repository";
 import { assertAdjustmentReason, assertFiscalRelationTuple, assertRequestId, assertRevision, parseFiscalBrlDecimal, parseNullableProject, parseNullableText, parseOptionalFiscalBrlDecimal, parseTriState, parseIsoDate } from "@/lib/source-adjustment-validation";
 import type { AdjustmentActionState } from "@/lib/source-adjustment-types";
 
@@ -68,4 +68,18 @@ export async function restoreFiscalNoteAction(_previous: AdjustmentActionState, 
     if (message) return { status: "invalid", message };
     return unavailable();
   }
+}
+
+export async function deleteFiscalNoteAction(_previous:AdjustmentActionState,formData:FormData):Promise<AdjustmentActionState>{
+ await requireAuthenticatedPage();await assertSameOrigin();
+ if(process.env.TRIA_DEMO_WRITES!=="enabled")return unavailable();
+ try{
+  const projects=await deleteFiscalNote({id:text(formData,'fiscalNoteId'),expectedRevision:assertRevision(text(formData,'expectedRevision')),requestId:assertRequestId(text(formData,'requestId')),reason:assertAdjustmentReason(text(formData,'reason'))});
+  revalidatePath('/');revalidatePath('/notas-fiscais');revalidatePath('/projetos');
+  for(const id of projects){revalidatePath(`/projetos/${id}`);revalidatePath(`/projetos/${id}/conferir`);}
+  return {status:'saved',message:'Nota excluída dos valores vigentes. Histórico e pagamentos preservados.'};
+ }catch(error){
+  if(error instanceof AdjustmentConflictError)return {status:'conflict',message:error.message,currentRevision:error.current.revision};
+  const message=safeValidationMessage(error);return message?{status:'invalid',message}:unavailable();
+ }
 }

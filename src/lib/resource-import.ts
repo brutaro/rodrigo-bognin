@@ -6,7 +6,7 @@ import { realSourceUploadEnabled } from "./consolidated-source-repository";
 import { verifiedStoredObjectNodeStream } from "./file-store";
 import { PassiveTabularReader } from "@/modules/source-ledger/domain/passive-tabular-reader";
 import { syntheticSafeLimits } from "@/modules/source-ledger/domain/import-registry";
-import { mergeProjectResources, resourceDifferences, resolveResourceRows, type ResourceDecisions, resourceTotalCents, compareResources, suggestResourceMapping, validateResourceRows, type ResourceRow, type ResourceMapping } from "./resource-import-domain";
+import { preserveResourceExecutors, mergeProjectResources, resourceDifferences, resolveResourceRows, type ResourceDecisions, resourceTotalCents, compareResources, suggestResourceMapping, validateResourceRows, type ResourceRow, type ResourceMapping } from "./resource-import-domain";
 
 function enabled() { if (!realSourceUploadEnabled()) throw new Error("Importação real disponível somente no ambiente local do proprietário."); }
 export async function sourceDocument(sourceId: string, delimiter: "," | ";" | "\t" = ";") {
@@ -49,7 +49,8 @@ export async function prepareResources(sourceId: string, ordinal: number, mappin
   if (!sheet) throw new Error("Selecione uma aba válida.");
   const data = validateResourceRows(sheet.rows, mapping, sheet.headers.length, sheet.locators, scope);
   const current = await currentResources();
-  const rows = scope ? mergeProjectResources(current?.rows ?? [], data.rows, scope.title) : data.rows;
+  const incoming = preserveResourceExecutors(current?.rows ?? [], data.rows);
+  const rows = scope ? mergeProjectResources(current?.rows ?? [], incoming, scope.title) : incoming;
   const activityPlan = includeActivities && !data.errors.length ? await prepareResourceActivities(data.rows, new Map(sheet.rows.map((row,index) => [String(row[mapping.id]).trim(), Number(sheet.locators?.[index]?.replace(/^row:/,"")) || index+2]))) : null;
   const activityInputIds = includeActivities ? data.rows.map(row => row.id) : null;
   const id = randomUUID();

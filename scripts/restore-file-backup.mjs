@@ -5,6 +5,7 @@ import { chmod, lstat, mkdir, open, rename, rm, writeFile } from "node:fs/promis
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import yauzl from "yauzl";
+import {validateContextBackupDocument,validateContextBackupEnvelope} from "./context-backup-shape.mjs";
 
 function usage() {
   console.error("Uso: node scripts/restore-file-backup.mjs --verify-only <bundle.zip> | --target <diretório-novo> <bundle.zip>");
@@ -132,7 +133,7 @@ const evidenceMedia = new Map([
   ["pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"], ["mp4", "video/mp4"], ["pbix", "application/octet-stream"],
 ]);
 function normalizeAndValidateShape(model) {
-  const explicitDocuments = model.documents.every((item) => ["project", "evidence", "source"].includes(item.document_kind));
+  const explicitDocuments = model.documents.every((item) => ["project", "evidence", "source", "context"].includes(item.document_kind));
   const explicitVersions = model.versions.every((item) => Object.hasOwn(item, "evidence_asset_id"));
   const legacy = !model.documents.some((item) => Object.hasOwn(item, "document_kind")) && !model.versions.some((item) => Object.hasOwn(item, "evidence_asset_id"));
   if (!legacy && (!explicitDocuments || !explicitVersions)) throw new Error("Shape misto do catálogo recusado.");
@@ -148,6 +149,8 @@ function normalizeAndValidateShape(model) {
     const sources = sourceFiles.filter((item) => item.document_id === document.id);
     if (document.document_kind === "project") {
       if (!document.project_id || sources.length !== 0 || owned.some((item) => item.evidence_asset_id !== null)) throw new Error("Shape de documento de projeto inválido.");
+    } else if(document.document_kind === "context") {
+      validateContextBackupDocument(document,owned,sources,model.publicationLinks,model.financialProofs??[]);
     } else if (document.document_kind === "evidence") {
       if (sources.length !== 0 || document.project_id !== null || document.include_in_publication !== false || owned.length !== 1) throw new Error("Shape de documento de evidência inválido.");
       const version = owned[0];
@@ -252,16 +255,20 @@ try {
     if (!expected || restored.has(name)) throw new Error("Objeto não declarado ou duplicado.");
     if (entry.uncompressedSize !== expected.sizeBytes) throw new Error("Tamanho ZIP diverge do manifesto.");
     const hash = createHash("sha256"); let size = 0;
+    const contextVersion=catalogModel.versions.find(version=>version.object_key===name.slice('objects/'.length)&&catalogModel.documents.some(document=>document.id===version.document_id&&document.document_kind==='context'));
+    let pdfHead=Buffer.alloc(0),pdfTail=Buffer.alloc(0);
+    const observe=chunk=>{size+=chunk.length;hash.update(chunk);if(contextVersion){if(pdfHead.length<12)pdfHead=Buffer.concat([pdfHead,chunk.subarray(0,12-pdfHead.length)]);pdfTail=Buffer.concat([pdfTail,chunk]).subarray(-1024);}};
     const stream = await entryStream(zip, entry);
     if (temporary) {
       const destination = path.join(temporary, name);
-      const verifier = async function* () { for await (const chunk of stream) { size += chunk.length; hash.update(chunk); yield chunk; } };
+      const verifier = async function* () { for await (const chunk of stream) { observe(chunk); yield chunk; } };
       await pipeline(verifier(), createWriteStream(destination, { flags: "wx", mode: 0o600 }));
       await syncPath(destination);
     } else {
-      for await (const chunk of stream) { size += chunk.length; hash.update(chunk); }
+      for await (const chunk of stream) { observe(chunk); }
     }
     if (size !== expected.sizeBytes || hash.digest("hex") !== expected.sha256) throw new Error("Objeto adulterado.");
+    if(contextVersion)validateContextBackupEnvelope(pdfHead,pdfTail);
     restored.add(name);
   }
   if (!manifest || !catalog || !catalogModel || restored.size !== manifest.objects.length || manifest.objects.some((item) => !restored.has(item.path))) throw new Error("Bundle incompleto.");

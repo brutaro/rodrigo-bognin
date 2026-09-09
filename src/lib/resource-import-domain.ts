@@ -6,9 +6,10 @@ export const resourceFields = [
   { key: "amount", label: "Valor (R$)", aliases: ["valor (r$)", "valor", "medicao"] },
   { key: "hours", label: "Horas (opcional)", aliases: ["horas", "duracao"] },
   { key: "bm", label: "Boletim (opcional)", aliases: ["boletim", "bm"] },
+  { key: "executor", label: "Executor (opcional)", aliases: ["executor", "executores"] },
   { key: "nature", label: "Natureza (opcional)", aliases: ["natureza"] },
 ] as const;
-export type ResourceRow = { id: string; project: string; date: string; activity: string; amount: string; hours: string; bm?: string; nature: string };
+export type ResourceRow = { id: string; project: string; date: string; activity: string; amount: string; hours: string; bm?: string; executor?: string; nature: string };
 export type ResourceMapping = Record<string, number>;
 export function normalizeHeader(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase(); }
 export function suggestResourceMapping(headers: string[]): ResourceMapping {
@@ -45,8 +46,8 @@ export function validateResourceRows(rows: string[][], mapping: ResourceMapping,
       if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) date = date.split("/").reverse().join("-");
       if (/^\d{5}$/.test(date)) date = new Date(Date.UTC(1899, 11, 30) + Number(date) * 86400000).toISOString().slice(0, 10);
       if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) throw new Error("data inválida");
-      const result = { id, project: value("project"), date, activity: value("activity"), amount: decimal(value("amount")), hours: value("hours") ? decimal(value("hours")) : "", nature: value("nature"), bm: value("bm") };
-      if (id.length > 120 || result.project.length > 300 || result.activity.length > 10000) throw new Error("texto muito longo");
+      const result = { id, project: value("project"), date, activity: value("activity"), amount: decimal(value("amount")), hours: value("hours") ? decimal(value("hours")) : "", nature: value("nature"), bm: value("bm"), executor: value("executor") };
+      if (id.length > 120 || result.project.length > 300 || result.activity.length > 10000 || result.executor.length > 300) throw new Error("texto muito longo");
       valid.push(result);
     } catch (error) { errors.push(`Linha ${locators?.[index]?.replace(/^row:/, "") ?? index + 2}: ${error instanceof Error ? error.message : "inválida"}.`); }
   });
@@ -96,4 +97,24 @@ export function mergeProjectResources(current: ResourceRow[], incoming: Resource
   const collision = incoming.find(row => ids.has(row.id));
   if (collision) throw new Error(`ID ${collision.id} já pertence a outro projeto. Use um ID diferente.`);
   return [...others, ...incoming];
+}
+
+// Ausência de nomes não apaga a associação anterior; mover um ID não copia pessoas entre projetos.
+export function preserveResourceExecutors(current: ResourceRow[], next: ResourceRow[]) {
+  const prior = new Map(current.map(row => [row.id, row]));
+  return next.map(row => {
+    const before = prior.get(row.id);
+    return !row.executor?.trim() && before?.project === row.project && before.executor?.trim()
+      ? { ...row, executor: before.executor } : row;
+  });
+}
+export function projectExecutors(rows: ResourceRow[], project: string) {
+  const names = new Map<string, string>();
+  for (const row of rows) if (row.project === project && row.executor?.trim()) {
+    const name = row.executor.trim().replace(/\s+/g, " ");
+    if (name === "-") continue;
+    const key = name.normalize("NFC").toLocaleLowerCase("pt-BR");
+    if (!names.has(key)) names.set(key, name);
+  }
+  return [...names.values()].sort((a,b) => a.localeCompare(b, "pt-BR"));
 }

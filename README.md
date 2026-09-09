@@ -67,6 +67,14 @@ curl --fail http://127.0.0.1:3100/api/health
 
 Abra `http://127.0.0.1:3100/entrar` e use o conteúdo de `.secrets/tria_login_code`. O mesmo código continua válido até uma rotação deliberada. Altere `TRIA_PORT` no `.env` se essa porta estiver ocupada.
 
+### Testar a etapa local de 09/09
+
+- **Contexto**, ao lado de Visão geral: envie um PDF, abra o registro e role as páginas na janela. Feche e recarregue para conferir a persistência.
+- **Executores**: importe uma planilha com a coluna opcional `Executor`, globalmente ou pelo projeto. Confira os nomes no projeto; nomes vazios ou coluna ausente preservam as associações existentes.
+- **Notas fiscais**: abra **Excluir** na nota, informe o motivo e confirme. Os totais fiscais vigentes e novos relatórios são recalculados; arquivos, histórico, pagamentos e publicações anteriores permanecem preservados.
+
+Depois de construir as imagens locais, execute `TRIA_E2E_LOCAL_IMAGES=1 bash scripts/project-resource-e2e.sh` para testar em banco/cofre descartáveis na porta 3111, reutilizando as imagens locais sem outro build. O script remove somente seu ambiente de teste.
+
 **Não execute `docker compose down -v`.** Essa opção apaga o banco e o cofre de arquivos locais. `docker compose down` preserva os volumes nomeados.
 
 Consulte [`docs/docker-local.md`](docs/docker-local.md) para o runtime local e [`docs/deploy-github-railway.md`](docs/deploy-github-railway.md) para GitHub/Railway.
