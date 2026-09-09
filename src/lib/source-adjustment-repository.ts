@@ -131,3 +131,15 @@ export async function restoreFiscalNote(input: Pick<FiscalInput, "id" | "expecte
     throw error;
   }
 }
+
+export async function deleteFiscalNote(input:{id:string;expectedRevision:string;requestId:string;reason:string}) {
+ databaseRequired();
+ try{
+  const [result]=await getSql()`SELECT delete_owner_fiscal_note(${input.id},${input.expectedRevision},${input.requestId},${input.reason}) projects`;
+  return result.projects as string[];
+ }catch(error){
+  if((error as {code?:string}).code==='40001')throw new AdjustmentConflictError({revision:'alterada'});
+  if(['P0002','22023'].includes((error as {code?:string}).code??''))throw new Error('Os dados da NFS-e ou da exclusão são inválidos. Recarregue a página.');
+  throw error;
+ }
+}

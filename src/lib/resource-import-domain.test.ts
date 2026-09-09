@@ -3,10 +3,10 @@ import { validateResourceRows, suggestResourceMapping, compareResources, cents, 
 const headers = ["ID", "Projeto", "Data", "Atividade", "Valor (R$)", "Horas", "Executor", "Curso", "Trilha"];
 const mapping = suggestResourceMapping(headers);
 describe("Carga real de recursos", () => {
- it("preserva precisão e negativos sem importar identificação ou cursos", () => {
+ it("preserva precisão e negativos com executor e sem cursos", () => {
    const result = validateResourceRows([["L01","Projeto A","22/08/2024","Atividade","-1.234,5678","1.5","privado","curso","trilha"]],mapping,headers.length);
    expect(result.errors).toEqual([]); expect(result.rows[0].amount).toBe("-1234.5678");
-   expect(cents(result.rows[0].amount)).toBe(-123457n); expect(JSON.stringify(result.rows)).not.toContain("privado");
+   expect(cents(result.rows[0].amount)).toBe(-123457n); expect(result.rows[0].executor).toBe("privado"); expect(JSON.stringify(result.rows)).not.toContain("curso");
  });
  it("não aceita ID duplicado, fórmula, data impossível ou mapeamento duplicado",()=>{
    const row=["L01","Projeto A","2024-08-22","Atividade","10",""];
@@ -68,4 +68,26 @@ describe("Importação por projeto", () => {
    expect(()=>mergeProjectResources([b],[{...b,project:"Projeto A"}],scope.title)).toThrow("já pertence a outro projeto");
    expect(()=>mergeProjectResources([b],[b],scope.title)).toThrow("outro projeto");
  });
+});
+
+import {preserveResourceExecutors,projectExecutors} from './resource-import-domain';
+describe('Executores conservadores',()=>{
+ const row={id:'L1',project:'A',date:'',activity:'',amount:'1',hours:'',nature:'',executor:'Ana'};
+ it('preserva células vazias e ausentes e submete nomes novos às decisões',()=>{
+  for(const executor of [undefined,'','  '])expect(preserveResourceExecutors([row],[{...row,executor}])[0].executor).toBe('Ana');
+  const next=preserveResourceExecutors([row],[{...row,executor:'Beatriz'}]);
+  expect(resourceDifferences([row],next)).toHaveLength(1);
+  expect(resolveResourceRows([row],next,{L1:'keep'})[0].executor).toBe('Ana');
+  expect(resolveResourceRows([row],next,{L1:'incoming'})[0].executor).toBe('Beatriz');
+  expect(preserveResourceExecutors([row],[{...row,project:'B',executor:''}])[0].executor).toBe('');
+ });
+ it('deduplica nomes somente dentro do projeto certo',()=>{
+  expect(projectExecutors([row,{...row,id:'L2',executor:' ana '},{...row,id:'L3',executor:'Beatriz'},{...row,project:'B',executor:'Carlos'}],'A')).toEqual(['Ana','Beatriz']);
+ });
+});
+
+it('aceita Executor/Executores e não apresenta marcador vazio como pessoa',()=>{
+ expect(suggestResourceMapping(['Executores']).executor).toBe(0);
+ const row={id:'L1',project:'A',date:'',activity:'',amount:'1',hours:'',nature:'',executor:'-'};
+ expect(projectExecutors([row,{...row,id:'L2',executor:' '}],'A')).toEqual([]);
 });

@@ -374,6 +374,26 @@ export async function prepareEvidenceDownload(projectId: string, evidenceAssetId
   return row ? prepareFileDownload(row.version_id, projectId) : undefined;
 }
 
+export async function purgeContextFile(versionId: string) {
+  return withFileOperation(async () => {
+    await reconcileFileStoreInternal();
+    const sql = getSql();
+    const state = await sql.begin(async (tx) => {
+      const [document] = await tx<{ id: string }[]>`SELECT d.id::text FROM file_document d
+        JOIN file_version v ON v.document_id=d.id WHERE v.id=${versionId} AND d.document_kind='context' FOR UPDATE OF d`;
+      if (!document) return null;
+      await tx`UPDATE file_document SET status='purging',updated_at=now() WHERE id=${document.id}`;
+      await tx`UPDATE file_version SET status='purging' WHERE document_id=${document.id}`;
+      const versions = await tx<{ object_key: string }[]>`SELECT object_key::text FROM file_version WHERE document_id=${document.id}`;
+      return { documentId: document.id, versions };
+    });
+    if (!state) return { removed: false };
+    for (const version of state.versions) await removeStoredObject(version.object_key);
+    await sql`SELECT * FROM complete_file_purge(${state.documentId})`;
+    return { removed: true };
+  });
+}
+
 export async function purgeFileDocument(documentId: string) {
   return withFileOperation(async () => {
     await reconcileFileStoreInternal();

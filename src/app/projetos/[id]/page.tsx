@@ -1,3 +1,5 @@
+import { currentResources } from "@/lib/resource-import";
+import { projectExecutors } from "@/lib/resource-import-domain";
 import {ContractEditor} from "@/components/contract-editor";
 import {ContractSummary} from "@/components/contract-summary";
 import { ReimbursementEditor } from "@/components/reimbursement-status";
@@ -48,6 +50,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const localData = isDatabaseConfigured();
   const project = await getProjectDetails(id);
   if (!project) notFound();
+  const executors = localData ? projectExecutors((await currentResources())?.rows ?? [], project.sourceName ?? project.name) : [];
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
   const draft = await readProjectDraft(project.id);
@@ -93,6 +96,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
           {localData ? <ProjectSettings title={project.name} start={project.periodStart} end={project.periodEnd} archived={Boolean(project.archived)} revision={project.metadataRevision ?? "0"} action={editProjectAction.bind(null, project.id)} /> : null}
         </section>
 
+        {executors.length > 0 && <section aria-label="Executores" className="mt-6 rounded-2xl border border-[var(--border)] bg-white p-5"><h2 className="text-lg font-bold">Executores</h2><ul className="mt-2 flex flex-wrap gap-3">{executors.map(name => <li key={name} className="rounded-lg bg-slate-50 px-3 py-2">{name}</li>)}</ul></section>}
         <ResourceSummary projectId={project.id} projectTitle={project.sourceName ?? project.name} />
         <ContractSummary contract={draft.contract} /><ContractEditor key={draft.contract?.revision??"0"} projectId={project.id} contract={draft.contract} />
         {draft.cash && <><CashSummary result={draft.cash} /><CashReviewEditor key={`${draft.cash.sourceHash}-${draft.cash.review?.revision ?? "0"}`} projectId={project.id} basisHash={draft.cash.sourceHash} review={draft.cash.review} /></>}
