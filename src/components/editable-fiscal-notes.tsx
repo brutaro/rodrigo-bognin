@@ -1,4 +1,5 @@
 "use client";
+import { ownerDisplay } from "@/lib/owner-display";
 
 import { useActionState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -19,7 +20,7 @@ function FiscalHistory({ note }: { note: Note }) {
     <ol className="mt-3 space-y-3">{note.adjustmentHistory.map((item) => <li key={item.revision} className="border-l-2 border-blue-200 pl-3">
       <strong>Revisão {item.revision} · {item.operation === "restore" ? "restauração" : "ajuste"}</strong>
       <span className="block"><b>Antes:</b> {item.before}</span><span className="block"><b>Depois:</b> {item.after}</span>
-      <span className="block">{item.actor} · {dateTime(item.adjustedAt)} · Motivo: {item.reason}</span>
+      <span className="block">{ownerDisplay(item.actor)} · {dateTime(item.adjustedAt)} · Motivo: {item.reason}</span>
     </li>)}</ol>
   </details>;
 }
@@ -38,9 +39,9 @@ function Editor({ note, projects, saveAction, restoreAction }: { note: Note; pro
   const [saveState, submitSave, pending] = useActionState(saveAction, initial);
   const [restoreState, submitRestore, restorePending] = useActionState(restoreAction, initial);
   return <details className="rounded-xl border border-slate-200 bg-white p-3"><summary className="cursor-pointer text-sm font-bold text-[var(--brand)]">Editar linha completa</summary>
-    <div className="mt-4 grid gap-3 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-2"><div><strong className="block">Auditoria importada</strong><span>{note.source.year} · {note.source.number} · {note.source.issueDate}</span><span className="block">{note.source.amount} · {note.source.category ?? "Sem categoria"}</span><span className="block">Declarado: {projectTitle(note.source.declaredProjectId, projects)}</span><span className="block">Candidato: {projectTitle(note.source.candidateProjectId, projects)}</span></div><div><strong className="block text-blue-900">{note.adjustmentOperation === "restore" ? "Restaurado para a auditoria importada" : note.adjusted ? "Ajustado por Rodrigo" : "Efetivo sem ajuste"}</strong><span>{note.year} · {note.number} · {note.issueDate}</span><span className="block">{note.amount} · {note.category}</span><span className="block">Declarado: {note.declaredProject ?? "Não informado"}</span><span className="block">Candidato: {note.candidateProject ?? "Não informado"}</span></div></div>
+    <div className="mt-4 grid gap-3 rounded-lg bg-slate-50 p-3 text-xs sm:grid-cols-2"><div><strong className="block">Auditoria importada</strong><span>{note.source.year} · {note.source.number} · {note.source.issueDate}</span><span className="block">{note.source.amount} · {note.source.category ?? "Sem categoria"}</span><span className="block">Declarado: {projectTitle(note.source.declaredProjectId, projects)}</span><span className="block">Candidato: {projectTitle(note.source.candidateProjectId, projects)}</span></div><div><strong className="block text-blue-900">{note.adjustmentOperation === "restore" ? "Restaurado para a auditoria importada" : note.adjusted ? "Ajustado por XCON" : "Efetivo sem ajuste"}</strong><span>{note.year} · {note.number} · {note.issueDate}</span><span className="block">{note.amount} · {note.category}</span><span className="block">Declarado: {note.declaredProject ?? "Não informado"}</span><span className="block">Candidato: {note.candidateProject ?? "Não informado"}</span></div></div>
     <FiscalHistory note={note} />
-    {note.adjusted ? <p className="mt-3 text-xs leading-5 text-slate-600">Revisão {note.adjustmentRevision} · {note.adjustedBy} · {dateTime(note.adjustedAt)}<br />Motivo: {note.adjustmentReason}</p> : null}
+    {note.adjusted ? <p className="mt-3 text-xs leading-5 text-slate-600">Revisão {note.adjustmentRevision} · {ownerDisplay(note.adjustedBy)} · {dateTime(note.adjustedAt)}<br />Motivo: {note.adjustmentReason}</p> : null}
     <form action={submitSave} className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <input type="hidden" name="fiscalNoteId" value={note.id} /><input type="hidden" name="expectedRevision" value={note.adjustmentRevision} /><input type="hidden" name="requestId" value={note.adjustmentRequestId} />
       <label className="text-xs font-bold">Ano<input name="issueYear" inputMode="numeric" defaultValue={note.year} required className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-2 text-sm font-normal" /></label>
@@ -63,7 +64,7 @@ function Editor({ note, projects, saveAction, restoreAction }: { note: Note; pro
   </details>;
 }
 
-function Summary({ note }: { note: Note }) { return <><p className="font-semibold">{note.year} · {note.number}</p><p className="text-xs text-slate-500">{note.issueDate} · {note.id}</p>{note.adjusted ? <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-900">{note.adjustmentOperation === "restore" ? "Restaurado" : "Ajustado por Rodrigo"} · rev. {note.adjustmentRevision}</span> : <span className="mt-1 inline-block text-xs text-slate-500">Auditoria importada</span>}</>; }
+function Summary({ note }: { note: Note }) { return <><p className="font-semibold">{note.year} · {note.number}</p><p className="text-xs text-slate-500">{note.issueDate} · {note.id}</p>{note.adjusted ? <span className="mt-1 inline-block rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-900">{note.adjustmentOperation === "restore" ? "Restaurado" : "Ajustado por XCON"} · rev. {note.adjustmentRevision}</span> : <span className="mt-1 inline-block text-xs text-slate-500">Auditoria importada</span>}</>; }
 
 export function EditableFiscalNotes({ notes, projects, saveAction, restoreAction, deleteAction }: { notes: Note[]; projects: ProjectOption[]; saveAction: Action; restoreAction: Action; deleteAction: Action }) {
   return <section className="mt-7 overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-sm">

@@ -20,7 +20,7 @@ export default async function Home() {
         <section className="mb-7 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--brand)]">Visão geral</p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-[var(--ink)] sm:text-4xl">Olá, Rodrigo</h1>
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-[var(--ink)] sm:text-4xl">Olá, XCON</h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-[var(--ink-muted)]">
               Confira a base de recursos e continue o trabalho nos seus projetos.
             </p>

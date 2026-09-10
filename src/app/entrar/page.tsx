@@ -15,7 +15,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/entrar">) 
       <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-7">
         <div className="flex items-center gap-3"><TriaMark /><span className="text-2xl font-bold tracking-tight text-[var(--ink)]">TRIA</span></div>
         <p className="mt-6 text-xs font-bold uppercase tracking-[.16em] text-[var(--brand)]">Projetos e prestação de contas</p>
-        <h1 className="mt-2 text-3xl font-bold text-[var(--ink)]">Entrar como Rodrigo</h1>
+        <h1 className="mt-2 text-3xl font-bold text-[var(--ink)]">Entrar como XCON</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">Use o código permanente guardado fora do aplicativo.</p>
         {failed ? <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">Não foi possível entrar. Verifique o código e tente novamente.</p> : null}
         <form action={loginAction} className="mt-6 space-y-4">
