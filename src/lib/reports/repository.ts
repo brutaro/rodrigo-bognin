@@ -142,7 +142,7 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
         { name: "Nota ou cobrança manual", value: formatCents(data.financial.manual_invoice), explanation: "Cadastro manual; não substitui o universo fiscal." },
         { name: "Reembolsos cadastrados (originais)", value: formatCents(data.financial.reimbursements), explanation: "Todos os lançamentos originais, inclusive desconsiderados. O recebido vigente está no resultado de caixa." },
         { name: "Pagamentos cadastrados (originais)", value: formatCents(data.financial.payments), explanation: "Todos os lançamentos originais, inclusive desconsiderados. A saída confirmada está no resultado de caixa." },
-        { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Valor informado por Rodrigo." },
+        { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Valor informado por XCON." },
       ],
       evidence: data.evidence.map((row, index) => ({ code: `EVD-${String(index + 1).padStart(3, "0")}`, type: row.file_type ?? "Arquivo", status: row.status })),
       history: (() => {
@@ -237,7 +237,7 @@ export async function readGlobalReport(): Promise<GlobalReportModel> {
         { name: "Relação auditada", value: formatBrlDecimal(data.financial.related), explanation: "Soma somente dos valores relacionados verificados." },
         { name: "Custo manual do projeto", value: formatCents(data.financial.manual_cost), explanation: "Soma somente dos custos/valores cadastrados manualmente." },
         { name: "Nota ou cobrança manual", value: formatCents(data.financial.manual_invoice), explanation: "Soma somente das notas/cobranças manuais; não substitui NFS-e." },
-        { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Soma somente dos valores informados por Rodrigo." },
+        { name: "Valor informado", value: formatCents(data.financial.reported), explanation: "Soma somente dos valores informados por XCON." },
         { name: "Reembolsos cadastrados (originais)", value: formatCents(data.financial.reimbursements), explanation: "Todos os lançamentos originais, inclusive desconsiderados. Consulte o caixa confirmado." },
         { name: "Pagamentos cadastrados (originais)", value: formatCents(data.financial.payments), explanation: "Todos os lançamentos originais, inclusive desconsiderados. Consulte o caixa confirmado." },
       ] };

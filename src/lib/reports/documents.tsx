@@ -1,3 +1,4 @@
+import { ownerDisplay } from "@/lib/owner-display";
 import { cashMetrics, type CashResult } from "../cash-domain";
 import "server-only";
 
@@ -68,7 +69,7 @@ function Intro({ code, generatedAt, hash }: { code: string; generatedAt: string;
 
 function CashReport({result,scope}:{result:CashResult;scope:string}) {
   return <><Text style={s.h2}>Resultado financeiro — caixa · {scope}</Text>
-    <Text style={s.muted}>Regra {result.formulaVersion}{result.review ? ` · corte ${result.review.cutoffDate} · conferência R${result.review.revision} por ${result.review.actor}` : ''}</Text>
+    <Text style={s.muted}>Regra {result.formulaVersion}{result.review ? ` · corte ${result.review.cutoffDate} · conferência R${result.review.revision} por ${ownerDisplay(result.review.actor)}` : ''}</Text>
     {result.issues.map(issue=><Text style={s.notice} key={issue}>{issue}</Text>)}
     <Table headers={["Indicador","Valor","Regra"]} rows={cashMetrics(result).map(m=>[m.name,m.value,m.explanation])} widths={[1.3,1,2.2]} />
   </>;
@@ -84,9 +85,9 @@ export function ProjectReportDocument({ model }: { model: ProjectReportModel }) 
       <View style={s.metrics}>{model.financialUniverses.map((item) => <View key={item.name} style={s.metric} wrap={false}><Text style={{ fontWeight: 700 }}>{item.name}</Text><Text>{item.value}</Text><Text style={s.muted}>{item.explanation}</Text></View>)}</View>
       {Boolean(model.financialDocuments?.length) && <><Text style={s.h2}>Lançamentos e comprovantes</Text><Text style={s.muted}>Arquivo associado pelo proprietário; o vínculo não valida automaticamente o pagamento.</Text><Table headers={["Tipo", "Lançamento", "Valor", "Comprovante"]} rows={model.financialDocuments!.map(item=>[item.kind,item.description,item.amount,item.document])} widths={[1,2,1,2]} /></>}
       <ChartWithTable title="Horas efetivas por BM" data={model.hoursByBm} />
-      <Text style={s.h2}>Atividades: original e efetivo</Text><Table headers={["Atividade", "BM", "Horas origem / efetivo", "Medição origem / efetivo", "Proveniência"]} rows={model.activities.map((item) => [`${item.description}\n${item.id}`, item.bm, `${item.sourceHours}\n${item.effectiveHours}`, `${item.sourceMeasurement}\n${item.effectiveMeasurement}`, `R${item.revision} · ${item.provenance}`])} widths={[2.2, .7, 1.1, 1.2, 1.8]} />
+      <Text style={s.h2}>Atividades: original e efetivo</Text><Table headers={["Atividade", "BM", "Horas origem / efetivo", "Medição origem / efetivo", "Proveniência"]} rows={model.activities.map((item) => [`${item.description}\n${item.id}`, item.bm, `${item.sourceHours}\n${item.effectiveHours}`, `${item.sourceMeasurement}\n${item.effectiveMeasurement}`, `R${item.revision} · ${ownerDisplay(item.provenance)}`])} widths={[2.2, .7, 1.1, 1.2, 1.8]} />
       <Text style={s.h2}>Evidências</Text><Text style={s.muted}>Somente metadados. Nenhum upload foi renderizado.</Text><Table headers={["Código", "Tipo", "Situação"]} rows={model.evidence.map((item) => [item.code, item.type, item.status])} widths={[1, 2, 2]} />
-      <Text style={s.h2}>Histórico de ajustes</Text>{model.history.length ? model.history.map((item, index) => <View key={`${item.kind}-${item.record}-${item.revision}-${index}`} style={s.history} wrap={false}><Text style={{ fontWeight: 700 }}>{item.kind} · {item.record} · revisão {item.revision} · {item.operation === "restore" ? "restauração" : "ajuste"}</Text><Text>{item.actor} · {item.occurredAt}</Text><Text>Motivo: {item.reason}</Text><Text>Antes: {item.before}</Text><Text>Depois: {item.after}</Text></View>) : <Text>Nenhum ajuste registrado.</Text>}
+      <Text style={s.h2}>Histórico de ajustes</Text>{model.history.length ? model.history.map((item, index) => <View key={`${item.kind}-${item.record}-${item.revision}-${index}`} style={s.history} wrap={false}><Text style={{ fontWeight: 700 }}>{item.kind} · {item.record} · revisão {item.revision} · {item.operation === "restore" ? "restauração" : "ajuste"}</Text><Text>{ownerDisplay(item.actor)} · {item.occurredAt}</Text><Text>Motivo: {item.reason}</Text><Text>Antes: {item.before}</Text><Text>Depois: {item.after}</Text></View>) : <Text>Nenhum ajuste registrado.</Text>}
     </Page>
   </Document>;
 }

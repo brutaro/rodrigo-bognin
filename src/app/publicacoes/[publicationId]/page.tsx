@@ -1,3 +1,4 @@
+import { ownerDisplay } from "@/lib/owner-display";
 import {ContractSummary} from "@/components/contract-summary";
 import { CashSummary } from "@/components/cash-summary";
 import { requireAuthenticatedPage } from "@/lib/auth";
@@ -56,7 +57,7 @@ export default async function PublicationPage({ params, searchParams }: PageProp
           <p className="mt-3 text-sm text-[var(--ink-muted)]">{view.period} · publicada em {displayDate(view.publishedAt)}</p>
           <dl className="mt-6 grid gap-4 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-3">
             <div><dt className="text-xs uppercase text-slate-500">Código público</dt><dd className="mt-1 font-bold text-slate-800">{view.publicationCode}</dd></div>
-            <div><dt className="text-xs uppercase text-slate-500">Proveniência</dt><dd className="mt-1 font-bold text-slate-800">{view.provenance}</dd></div>
+            <div><dt className="text-xs uppercase text-slate-500">Proveniência</dt><dd className="mt-1 font-bold text-slate-800">{ownerDisplay(view.provenance)}</dd></div>
             <div><dt className="text-xs uppercase text-slate-500">Corte inclusivo</dt><dd className="mt-1 font-bold text-slate-800">{view.cutoff.startDate || "Data inicial não informada"} a {view.cutoff.endDate || "data final não informada"}</dd></div>
           </dl>
         </section>

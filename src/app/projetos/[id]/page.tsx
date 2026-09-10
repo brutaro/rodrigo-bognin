@@ -1,3 +1,4 @@
+import { ownerDisplay } from "@/lib/owner-display";
 import { currentResources } from "@/lib/resource-import";
 import { projectExecutors } from "@/lib/resource-import-domain";
 import {ContractEditor} from "@/components/contract-editor";
@@ -133,7 +134,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 {project.financialReferences.map((reference) => (
                   <article key={reference.id} className="p-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div><p className="text-xs font-bold uppercase tracking-wide text-[var(--brand)]">{reference.kind}</p><h3 className="mt-1 font-semibold text-[var(--ink)]">{reference.label}</h3><p className="mt-1 text-xs text-slate-500">Origem importada · {reference.id}</p></div>
+                      <div><p className="text-xs font-bold uppercase tracking-wide text-[var(--brand)]">{ownerDisplay(reference.kind)}</p><h3 className="mt-1 font-semibold text-[var(--ink)]">{reference.label}</h3><p className="mt-1 text-xs text-slate-500">Origem importada · {reference.id}</p></div>
                       <p className="text-lg font-bold text-[var(--ink)]">{reference.amount}</p>
                     </div>
                     <dl className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -148,7 +149,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                 {draft.manualFinancialEntries.map((entry) => (
                   <article key={entry.id} className="border-l-4 border-l-[#CB5C2B] p-5">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div><p className="text-xs font-bold uppercase tracking-wide text-blue-800">{entry.kind}</p><h3 className="mt-1 font-semibold text-[var(--ink)]">{entry.description}</h3><p className="mt-1 text-xs text-slate-500">{entry.origin} · {entry.documentState}</p></div>
+                      <div><p className="text-xs font-bold uppercase tracking-wide text-blue-800">{entry.kind}</p><h3 className="mt-1 font-semibold text-[var(--ink)]">{entry.description}</h3><p className="mt-1 text-xs text-slate-500">{ownerDisplay(entry.origin)} · {entry.documentState}</p></div>
                       <p className="text-lg font-bold text-[var(--ink)]">{formatBrlFromCents(entry.amountCents)}</p>
                     </div>
                     {localData && ["Custo ou valor do projeto","Pagamento"].includes(entry.kind) && <CostConfirmationEditor key={`${entry.id}-cost-${entry.confirmation?.revision ?? "0"}`} projectId={project.id} entryId={entry.id} kind={entry.kind} value={entry.confirmation} costs={draft.manualFinancialEntries.filter(e=>e.kind==="Custo ou valor do projeto" && e.confirmation?.status==="confirmado").map(e=>({id:e.id,description:e.description,amountCents:e.amountCents}))} />}
@@ -177,7 +178,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                   </label>
                   <label className="block text-sm font-semibold text-[var(--ink)] sm:col-span-2">Origem
                     <select name="origin" required defaultValue="Informado por Rodrigo" className="mt-2 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-normal">
-                      {financialOrigins.map((origin) => <option key={origin}>{origin}</option>)}
+                      {financialOrigins.map((origin) => <option key={origin} value={origin}>{ownerDisplay(origin)}</option>)}
                     </select>
                   </label>
                   <p className="text-xs leading-5 text-slate-500 sm:col-span-2">Após registrar, confirme o que o valor representa e vincule o comprovante. Para pagamento parcial, registre somente o valor efetivamente pago nesta parcela.</p>
@@ -199,7 +200,7 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
               {draft.history.length ? (
                 <ol className="divide-y divide-[var(--border)]">
                   {draft.history.slice(0, 8).map((event) => (
-                    <li key={event.id} className="p-5"><p className="text-sm font-semibold text-[var(--ink)]">{event.action}</p><p className="mt-1 text-xs leading-5 text-slate-500">{event.detail}</p><p className="mt-2 text-xs text-slate-500">{event.actor} · {displayDate(event.occurredAt)}</p></li>
+                    <li key={event.id} className="p-5"><p className="text-sm font-semibold text-[var(--ink)]">{event.action}</p><p className="mt-1 text-xs leading-5 text-slate-500">{ownerDisplay(event.detail)}</p><p className="mt-2 text-xs text-slate-500">{ownerDisplay(event.actor)} · {displayDate(event.occurredAt)}</p></li>
                   ))}
                 </ol>
               ) : <p className="p-5 text-sm text-[var(--ink-muted)]">{localData ? "Nenhuma alteração local registrada." : "Nenhuma alteração demonstrativa registrada."}</p>}

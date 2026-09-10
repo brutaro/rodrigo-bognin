@@ -1,4 +1,5 @@
 "use client";
+import { ownerDisplay } from "@/lib/owner-display";
 
 import { useActionState, useEffect, useRef } from "react";
 import type { AdjustmentActionState } from "@/lib/source-adjustment-types";
@@ -30,7 +31,7 @@ function ActivityHistory({ history }: { history: NonNullable<ActivityRow["adjust
       <strong>Revisão {item.revision} · {item.operation === "restore" ? "restauração" : "ajuste"}</strong>
       <span className="block">Antes: {item.beforeHours} · {item.beforeMeasuredValue}</span>
       <span className="block">Depois: {item.afterHours} · {item.afterMeasuredValue}</span>
-      <span className="block">{item.actor} · {dateTime(item.adjustedAt)} · Motivo: {item.reason}</span>
+      <span className="block">{ownerDisplay(item.actor)} · {dateTime(item.adjustedAt)} · Motivo: {item.reason}</span>
     </li>)}</ol>
   </details>;
 }
@@ -54,10 +55,10 @@ function Editor({ activity, saveAction, restoreAction }: { activity: ActivityRow
   return <div className="space-y-4">
     <div className="grid gap-3 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-2">
       <div><strong className="block text-slate-700">Auditoria importada</strong><span>Horas: {activity.sourceHours ?? activity.hours}</span><span className="block">Medição: {activity.sourceMeasuredValue ?? activity.measuredValue}</span></div>
-      <div><strong className="block text-blue-900">{activity.adjustmentOperation === "restore" ? "Restaurado para a auditoria importada" : activity.adjusted ? "Ajustado por Rodrigo" : "Efetivo sem ajuste"}</strong><span>Horas: {activity.hours}</span><span className="block">Medição: {activity.measuredValue}</span></div>
+      <div><strong className="block text-blue-900">{activity.adjustmentOperation === "restore" ? "Restaurado para a auditoria importada" : activity.adjusted ? "Ajustado por XCON" : "Efetivo sem ajuste"}</strong><span>Horas: {activity.hours}</span><span className="block">Medição: {activity.measuredValue}</span></div>
     </div>
     <ActivityHistory history={activity.adjustmentHistory ?? []} />
-    {activity.adjusted ? <p className="text-xs leading-5 text-slate-600">Revisão {activity.adjustmentRevision} · {activity.adjustedBy} · {dateTime(activity.adjustedAt)}<br />Motivo: {activity.adjustmentReason}</p> : null}
+    {activity.adjusted ? <p className="text-xs leading-5 text-slate-600">Revisão {activity.adjustmentRevision} · {ownerDisplay(activity.adjustedBy)} · {dateTime(activity.adjustedAt)}<br />Motivo: {activity.adjustmentReason}</p> : null}
     <form action={submitSave} className="grid gap-3 rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
       <input type="hidden" name="activityId" value={activity.id} /><input type="hidden" name="expectedRevision" value={activity.adjustmentRevision ?? "0"} /><input type="hidden" name="requestId" value={activity.adjustmentRequestId} />
       <fieldset><legend className="text-xs font-bold text-slate-700">Horas efetivas</legend><label className="mr-3 text-xs"><input type="radio" name="hoursMode" value="present" defaultChecked={effectiveHoursPresent} /> Informadas</label><label className="text-xs"><input type="radio" name="hoursMode" value="missing" defaultChecked={!effectiveHoursPresent} /> Ausentes</label><input name="hours" defaultValue={effectiveHoursPresent ? (activity.durationSeconds !== undefined ? durationSecondsToInput(activity.durationSeconds) : activity.hours) : ""} placeholder="Ex.: 30:15:01" className="mt-2 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm" /></fieldset>

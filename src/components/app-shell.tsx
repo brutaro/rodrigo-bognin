@@ -30,7 +30,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className={`hidden rounded-full px-3 py-1.5 text-xs font-semibold sm:inline-flex ${localData ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
               {localData ? "Dados locais privados" : "Dados fictícios"}
             </span>
-            <span className="grid size-9 place-items-center rounded-full bg-slate-100 text-sm font-bold text-slate-700" aria-label="Conta de Rodrigo">R</span>
+            <span className="grid size-9 place-items-center rounded-full bg-slate-100 text-sm font-bold text-slate-700" aria-label="Conta de XCON">X</span>
             <form action={logoutAction}><button className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">Sair</button></form>
           </div>
         </div>
