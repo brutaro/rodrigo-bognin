@@ -70,17 +70,9 @@ describe("Importação por projeto", () => {
  });
 });
 
-import {preserveResourceExecutors,projectExecutors} from './resource-import-domain';
-describe('Executores conservadores',()=>{
+import {projectExecutors} from './resource-import-domain';
+describe('Executores da planilha',()=>{
  const row={id:'L1',project:'A',date:'',activity:'',amount:'1',hours:'',nature:'',executor:'Ana'};
- it('preserva células vazias e ausentes e submete nomes novos às decisões',()=>{
-  for(const executor of [undefined,'','  '])expect(preserveResourceExecutors([row],[{...row,executor}])[0].executor).toBe('Ana');
-  const next=preserveResourceExecutors([row],[{...row,executor:'Beatriz'}]);
-  expect(resourceDifferences([row],next)).toHaveLength(1);
-  expect(resolveResourceRows([row],next,{L1:'keep'})[0].executor).toBe('Ana');
-  expect(resolveResourceRows([row],next,{L1:'incoming'})[0].executor).toBe('Beatriz');
-  expect(preserveResourceExecutors([row],[{...row,project:'B',executor:''}])[0].executor).toBe('');
- });
  it('deduplica nomes somente dentro do projeto certo',()=>{
   expect(projectExecutors([row,{...row,id:'L2',executor:' ana '},{...row,id:'L3',executor:'Beatriz'},{...row,project:'B',executor:'Carlos'}],'A')).toEqual(['Ana','Beatriz']);
  });
@@ -90,4 +82,25 @@ it('aceita Executor/Executores e não apresenta marcador vazio como pessoa',()=>
  expect(suggestResourceMapping(['Executores']).executor).toBe(0);
  const row={id:'L1',project:'A',date:'',activity:'',amount:'1',hours:'',nature:'',executor:'-'};
  expect(projectExecutors([row,{...row,id:'L2',executor:' '}],'A')).toEqual([]);
+});
+
+
+it("substitui todos os recursos, incluindo zeros, executor vazio e IDs ausentes, sem somar a base antiga", () => {
+ const old = {id:"A",project:"Projeto",date:"",activity:"",amount:"50",hours:"2",executor:"Ana",nature:""};
+ const incoming = {...old,amount:"0",hours:"0",executor:""};
+ const current = [old, {...old,id:"B",amount:"100"}];
+ const next = [incoming];
+ const decisions = Object.fromEntries(resourceDifferences(current,next).map(row=>[row.id,"incoming" as const]));
+ const result = resolveResourceRows(current,next,decisions);
+ expect(result).toEqual([incoming]);
+ expect(resourceTotalCents(result)).toBe(0n);
+ expect(current[0].amount).toBe("50");
+ expect(compareResources(result,next)).toEqual({added:0,changed:0,unchanged:1,absent:0});
+});
+
+it("importa vazios numéricos como zero mas bloqueia fórmula sem resultado", () => {
+ const row = ["L1","Projeto","2026-09-11","Atividade","0","0",""];
+ expect(validateResourceRows([row],mapping,headers.length).rows[0]).toMatchObject({amount:"0",hours:"0",executor:""});
+ expect(validateResourceRows([[...row.slice(0,4),"",""]],mapping,headers.length).rows[0]).toMatchObject({amount:"0",hours:"0"});
+ expect(validateResourceRows([[...row.slice(0,4),"=L2*M2","=1+1"]],mapping,headers.length).errors[0]).toContain("Valor (R$), Horas (opcional): fórmula sem resultado válido salvo");
 });

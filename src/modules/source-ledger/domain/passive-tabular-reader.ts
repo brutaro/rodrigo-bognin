@@ -22,7 +22,7 @@ function fail(code: PassiveTabularReaderError["code"], message: string): never {
 }
 
 function assertLimits(limits: ParserLimits) {
-  const numeric = [limits.maxSourceBytes, limits.maxExpandedBytes, limits.maxZipEntries, limits.maxCompressionRatio, limits.maxSheets, limits.maxRows, limits.maxColumns, limits.maxCellCharacters, limits.maxCsvRecordBytes, limits.maxXmlDepth, limits.maxXmlAttributes, limits.maxMilliseconds];
+  const numeric = [limits.maxSourceBytes, limits.maxExpandedBytes, limits.maxZipEntries, limits.maxCompressionRatio, limits.maxSheets, limits.maxRows, limits.maxColumns, limits.maxCellCharacters, limits.maxCsvRecordBytes, limits.maxXmlDepth, limits.maxXmlAttributes, limits.maxMilliseconds, limits.maxXmlNodes ?? 100_000];
   if (!limits.version || numeric.some((value) => !Number.isSafeInteger(value) || value <= 0)) fail("TABULAR_LIMIT_EXCEEDED", "Os limites versionados do parser são inválidos.");
 }
 
@@ -227,7 +227,7 @@ function parseXml(xml: string, limits: ParserLimits, startedAt: number): XmlNode
     const source = xml.slice(open + 1, end);
     const selfClosing = source.trimEnd().endsWith("/");
     const parsed = parseStartTag(selfClosing ? source.slice(0, -1) : source, limits, startedAt);
-    if (++nodes > Math.min(limits.maxXmlNodes ?? 100_000, 500_000)) fail("TABULAR_LIMIT_EXCEEDED", "O XML excedeu o orçamento de elementos em memória.");
+    if (++nodes > Math.min(limits.maxXmlNodes ?? 100_000, 1_000_000)) fail("TABULAR_LIMIT_EXCEEDED", "O XML excedeu o orçamento de elementos em memória.");
     const node: XmlNode = { name: parsed.name, attrs: parsed.attrs, children: [], text: "" };
     stack[stack.length - 1].children.push(node);
     if (!selfClosing) {
@@ -313,7 +313,7 @@ async function unzip(bytes: Uint8Array, limits: ParserLimits, startedAt: number)
   });
 }
 
-function parseXlsx(entries: Map<string, Buffer>, sourceSha256: string, limits: ParserLimits, startedAt: number, allowPresentationSheets = false): TabularSheet[] {
+function parseXlsx(entries: Map<string, Buffer>, sourceSha256: string, limits: ParserLimits, startedAt: number, allowPresentationSheets = false, useCachedFormulaValues = false): TabularSheet[] {
   const workbookXml = entries.get("xl/workbook.xml")?.toString("utf8");
   const relsXml = entries.get("xl/_rels/workbook.xml.rels")?.toString("utf8");
   if (!workbookXml || !relsXml) fail("WORKBOOK_INVALID", "O workbook não possui catálogo de abas válido.");
@@ -374,13 +374,27 @@ function parseXlsx(entries: Map<string, Buffer>, sourceSha256: string, limits: P
         const type = attr(cell, "t");
         const formula = descendants(cell, "f")[0];
         const valueNode = descendants(cell, type === "inlineStr" ? "is" : "v")[0];
-        const raw = formula ? `=${textContent(formula)}` : valueNode ? textContent(valueNode) : textContent(cell);
+        // Nunca executa fórmulas. Importação de recursos pode usar o resultado salvo no XLSX.
+        const cached = useCachedFormulaValues && valueNode && (textContent(valueNode).trim() !== "" || type === "str") && type !== "e";
+        const raw = formula && !cached ? `=${textContent(formula)}` : valueNode ? textContent(valueNode) : textContent(cell);
         let value: string;
-        if (type === "s") {
+        if (formula && !cached) value = raw;
+        else if (type === "s") {
           const sharedIndex = Number(raw);
           if (!Number.isSafeInteger(sharedIndex) || sharedIndex < 0 || sharedIndex >= shared.length) fail("WORKBOOK_INVALID", "Uma célula referencia um shared string inválido.");
           value = shared[sharedIndex];
         } else value = type === "b" ? (raw === "1" ? "true" : "false") : raw;
+        // XLSX armazena números como doubles. Normaliza resíduos além da escala
+        // decimal suportada pelos recursos, sem executar fórmulas ou alterar textos.
+        if (useCachedFormulaValues && (!type || type === "n") && /^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(value)
+          && (/[eE]/.test(value) || (value.split(".")[1]?.length ?? 0) > 16)) {
+          const numeric = Number(value);
+          if (Number.isFinite(numeric) && Math.abs(numeric) < 1e14) {
+            const normalized = numeric.toFixed(16).replace(/\.?0+$/, "") || "0";
+            // Um valor não nulo pequeno demais deve falhar na validação, nunca virar zero.
+            if (Number(normalized) !== 0 || /^-?0+(?:\.0+)?(?:[eE][+-]?\d+)?$/.test(value)) value = normalized;
+          }
+        }
         if (dateStyles.has(Number(attr(cell,"s"))) && (!type || type==="n") && /^\d+(?:\.\d+)?$/.test(value)) {
           const serial=Number(value);
           if (Number.isSafeInteger(serial) && (date1904 || serial!==60) && serial>=0 && serial<=2958465) value=new Date(Date.UTC(date1904?1904:1899,date1904?0:11,date1904?1:31)+(serial-(date1904?0:serial>60?1:0))*86400000).toISOString().slice(0,10);
@@ -405,7 +419,7 @@ function parseXlsx(entries: Map<string, Buffer>, sourceSha256: string, limits: P
 }
 
 export class PassiveTabularReader {
-  async enumerate(input: { bytes: Uint8Array; sourceSha256: string; sourceFormat: SourceFormat; limits: ParserLimits; csvParseOptions?: CsvParseOptions; allowPresentationSheets?: boolean }): Promise<TabularDocument> {
+  async enumerate(input: { bytes: Uint8Array; sourceSha256: string; sourceFormat: SourceFormat; limits: ParserLimits; csvParseOptions?: CsvParseOptions; allowPresentationSheets?: boolean; useCachedFormulaValues?: boolean }): Promise<TabularDocument> {
     const startedAt = Date.now();
     assertLimits(input.limits);
     if (input.bytes.byteLength > input.limits.maxSourceBytes) fail("TABULAR_LIMIT_EXCEEDED", "A fonte excedeu o orçamento de bytes.");
@@ -416,7 +430,7 @@ export class PassiveTabularReader {
     }
     if (input.sourceFormat === "XLS") fail("XLS_BINARY_UNSUPPORTED", "XLS binário não é suportado nesta versão.");
     if (input.bytes[0] !== 0x50 || input.bytes[1] !== 0x4b) fail("WORKBOOK_INVALID", "O XLSX não possui contêiner ZIP válido.");
-    return { format: "XLSX", sheets: parseXlsx(await unzip(input.bytes, input.limits, startedAt), input.sourceSha256, input.limits, startedAt, input.allowPresentationSheets) };
+    return { format: "XLSX", sheets: parseXlsx(await unzip(input.bytes, input.limits, startedAt), input.sourceSha256, input.limits, startedAt, input.allowPresentationSheets, input.useCachedFormulaValues) };
   }
 
   read(input: { document: TabularDocument; sourceSha256: string; sheetSelection?: SheetSelection }): PassiveReadResult {

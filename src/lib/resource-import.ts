@@ -1,4 +1,5 @@
 import "server-only";
+import {resourceProjectCatalog,projectCatalogHash,planResourceProjects,type ResourceProjectPlan} from "./resource-project-import";
 import { createHash, randomUUID } from "node:crypto";
 import { prepareResourceActivities, type ActivityPlan } from "./resource-activity-import";
 import { getSql } from "./database";
@@ -6,7 +7,16 @@ import { realSourceUploadEnabled } from "./consolidated-source-repository";
 import { verifiedStoredObjectNodeStream } from "./file-store";
 import { PassiveTabularReader } from "@/modules/source-ledger/domain/passive-tabular-reader";
 import { syntheticSafeLimits } from "@/modules/source-ledger/domain/import-registry";
-import { preserveResourceExecutors, mergeProjectResources, resourceDifferences, resolveResourceRows, type ResourceDecisions, resourceTotalCents, compareResources, suggestResourceMapping, validateResourceRows, type ResourceRow, type ResourceMapping } from "./resource-import-domain";
+import { mergeProjectResources, resourceDifferences, resolveResourceRows, type ResourceDecisions, resourceTotalCents, compareResources, suggestResourceMapping, validateResourceRows, type ResourceRow, type ResourceMapping } from "./resource-import-domain";
+
+// Até 10 mil linhas de dados, mais cabeçalho; 25 colunas como a base de recursos.
+// Cada célula inline usa até 3 elementos (c/is/t), além de row e metadados.
+export const resourceParserLimits = Object.freeze({
+  ...syntheticSafeLimits,
+  version: "local-resource-v2",
+  maxXmlNodes: (syntheticSafeLimits.maxRows + 1) * (25 * 3 + 1) + 10_000,
+  maxMilliseconds: 20_000,
+});
 
 function enabled() { if (!realSourceUploadEnabled()) throw new Error("Importação real disponível somente no ambiente local do proprietário."); }
 export async function sourceDocument(sourceId: string, delimiter: "," | ";" | "\t" = ";") {
@@ -20,7 +30,7 @@ export async function sourceDocument(sourceId: string, delimiter: "," | ";" | "\
   const chunks: Buffer[] = [];
   for await (const chunk of await verifiedStoredObjectNodeStream(file.object_key, Number(file.size_bytes), file.sha256)) chunks.push(Buffer.from(chunk));
   const bytes = Buffer.concat(chunks);
-  const document = await new PassiveTabularReader().enumerate({ bytes, sourceSha256: file.sha256, sourceFormat: file.source_format.toUpperCase(), limits: { ...syntheticSafeLimits, version: "local-resource-v1", maxXmlNodes: 300000, maxMilliseconds: 20000 }, allowPresentationSheets: true,
+  const document = await new PassiveTabularReader().enumerate({ bytes, sourceSha256: file.sha256, sourceFormat: file.source_format.toUpperCase(), limits: resourceParserLimits, allowPresentationSheets: true, useCachedFormulaValues: true,
     csvParseOptions: { encoding: bytes[0] === 239 && bytes[1] === 187 && bytes[2] === 191 ? "utf-8-bom" : "utf-8", delimiter, quote: '"', escape: "double-quote", allowMultilineQuotedField: true } });
   return { hash: file.sha256 as string, sheets: document.sheets ?? [{ selection: { name: "CSV", ordinal: 0 }, headers: document.csv!.headers, rows: document.csv!.rows,locators:document.csv!.locators }] };
 }
@@ -37,7 +47,8 @@ function previewResult(id: string, hash: string, current: ResourceRow[], rows: R
   const after = title ? rows.filter(row => row.project === title) : rows;
   return { id, hash, differences: resourceDifferences(before, after), count: after.length, errors: errors.slice(0,30), errorCount: errors.length, sample: after.slice(0,20), totalCents: resourceTotalCents(after).toString(), ...compareResources(before, after) };
 }
-export async function prepareResources(sourceId: string, ordinal: number, mapping: ResourceMapping, delimiter?: "," | ";" | "\t", projectId?: string, includeActivities = false) {
+export async function prepareResources(sourceId: string, ordinal: number, mapping: ResourceMapping, delimiter?: "," | ";" | "\t", projectId?: string, includeActivities = false, overwrite = false) {
+  if (overwrite && projectId) throw new Error("Sobrescrever projetos está disponível somente na carga global.");
   let scope: { title: string; aliases: string[] } | undefined;
   if (projectId) {
     const [project] = await getSql()`SELECT title,coalesce(nullif(resource_source_title,''),title) source_title FROM project WHERE id=${projectId}`;
@@ -49,15 +60,17 @@ export async function prepareResources(sourceId: string, ordinal: number, mappin
   if (!sheet) throw new Error("Selecione uma aba válida.");
   const data = validateResourceRows(sheet.rows, mapping, sheet.headers.length, sheet.locators, scope);
   const current = await currentResources();
-  const incoming = preserveResourceExecutors(current?.rows ?? [], data.rows);
-  const rows = scope ? mergeProjectResources(current?.rows ?? [], incoming, scope.title) : incoming;
-  const activityPlan = includeActivities && !data.errors.length ? await prepareResourceActivities(data.rows, new Map(sheet.rows.map((row,index) => [String(row[mapping.id]).trim(), Number(sheet.locators?.[index]?.replace(/^row:/,"")) || index+2]))) : null;
+  const incoming = data.rows;
+  const incomingIds = new Set(incoming.map(row=>row.id));
+  const rows = scope ? mergeProjectResources(current?.rows ?? [], incoming, scope.title) : overwrite ? incoming : [...incoming,...(current?.rows ?? []).filter(row=>!incomingIds.has(row.id))];
+  const projectPlan = !data.errors.length ? planResourceProjects(await resourceProjectCatalog(),rows,current?.rows ?? [],overwrite,[],[...new Set(data.rows.map(row=>row.project))]) : null;
+  const activityPlan = includeActivities && !data.errors.length ? await prepareResourceActivities(data.rows, new Map(sheet.rows.map((row,index) => [String(row[mapping.id]).trim(), Number(sheet.locators?.[index]?.replace(/^row:/,"")) || index+2])),projectPlan?.create) : null;
   const activityInputIds = includeActivities ? data.rows.map(row => row.id) : null;
   const id = randomUUID();
-  const hash = createHash("sha256").update(JSON.stringify({ source: doc.hash, ordinal, mapping, rows, projectId, activityPlan })).digest("hex");
-  await getSql()`INSERT INTO resource_import(id,source_file_id,content_hash,sheet_name,rows,errors,base_id,scope_project_id,scope_project_title,activity_plan,activity_input_ids)
-    VALUES (${id},${sourceId},${hash},${sheet.selection.name},${getSql().json(rows)},${getSql().json(data.errors)},${current?.id ?? null},${projectId ?? null},${scope?.title ?? null},${activityPlan ? getSql().json(activityPlan) : null},${activityInputIds ? getSql().json(activityInputIds) : null})`;
-  return {...previewResult(id, hash, current?.rows ?? [], rows, data.errors, scope?.title), activities: activitySummary(activityPlan)};
+  const hash = createHash("sha256").update(JSON.stringify({ source: doc.hash, ordinal, mapping, rows, projectId, activityPlan, projectPlan })).digest("hex");
+  await getSql()`INSERT INTO resource_import(id,source_file_id,content_hash,sheet_name,rows,errors,base_id,scope_project_id,scope_project_title,activity_plan,activity_input_ids,project_plan)
+    VALUES (${id},${sourceId},${hash},${sheet.selection.name},${getSql().json(rows)},${getSql().json(data.errors)},${current?.id ?? null},${projectId ?? null},${scope?.title ?? null},${activityPlan ? getSql().json(activityPlan) : null},${activityInputIds ? getSql().json(activityInputIds) : null},${projectPlan ? getSql().json(projectPlan) : null})`;
+  return {...previewResult(id, hash, current?.rows ?? [], rows, data.errors, scope?.title), activities: activitySummary(activityPlan), projects:projectPlan};
 }
 export async function applyResources(id: string, hash: string) {
   enabled();
@@ -71,9 +84,17 @@ export async function applyResources(id: string, hash: string) {
     const [prior] = await tx`SELECT rows FROM resource_import WHERE id=${current?.import_id ?? null}`;
     const comparison = compareResources(prior?.rows ?? [], preview.rows);
     const activityPlan = preview.activity_plan as ActivityPlan | null;
+    const projectPlan = preview.project_plan as ResourceProjectPlan | null;
+    const projectChanges = projectPlan ? projectPlan.create.length + projectPlan.archive.length + projectPlan.restore.length : 0;
     const activityChanges = (activityPlan?.added ?? 0) + (activityPlan?.updated ?? 0);
-    if (!comparison.added && !comparison.changed && !comparison.absent && !activityChanges) return { id: current.import_id, reused: true };
+    if (!comparison.added && !comparison.changed && !comparison.absent && !activityChanges && !projectChanges) return { id: current.import_id, reused: true };
     if ((comparison.changed || comparison.absent) && !preview.resolved_from) throw new Error("Confira as diferenças e escolha como tratar os registros antes de aplicar.");
+    if (projectPlan) {
+      const catalog = await tx`SELECT id,title,coalesce(nullif(resource_source_title,''),title) source_title,metadata_revision::text revision,archived_at IS NOT NULL archived,date_start::text start,date_end::text "end" FROM project ORDER BY id FOR UPDATE`;
+      if(projectCatalogHash(catalog as Awaited<ReturnType<typeof resourceProjectCatalog>>)!==projectPlan.catalogHash) throw Error("Os projetos mudaram. Prepare uma nova prévia.");
+      for(const p of projectPlan.create) await tx`SELECT create_owner_project(${p.id},${p.title})`;
+      for(const p of [...projectPlan.archive,...projectPlan.restore]) await tx`SELECT edit_owner_project(${p.id},${p.title},${p.start}::date,${p.end}::date,${projectPlan.archive.some(a=>a.id===p.id)},${p.revision}::bigint)`;
+    }
     await tx`UPDATE resource_import SET applied_at=now() WHERE id=${id}`;
     await tx`INSERT INTO resource_import_current(singleton,import_id) VALUES (true,${id}) ON CONFLICT(singleton) DO UPDATE SET import_id=excluded.import_id`;
     if (activityPlan) await tx`SELECT apply_resource_activities(${id})`;
@@ -104,12 +125,15 @@ export async function resolveResources(id: string, hash: string, decisions: Reso
   if ((current?.id ?? null) !== preview.base_id) throw new Error("A base mudou. Prepare uma nova prévia.");
   const rows = resolveResourceRows(current?.rows ?? [], preview.rows, decisions);
   if (!rows.length) throw new Error("A decisão não pode produzir uma base vazia.");
-  const activityPlan = preview.activity_plan ? await prepareResourceActivities(rows.filter(row => preview.activity_input_ids.includes(row.id)), new Map((preview.activity_plan as ActivityPlan).items.map(item => [item.resourceId,item.sourceRow]))) : null;
+  const catalog = preview.project_plan ? await resourceProjectCatalog() : [];
+  if(preview.project_plan && projectCatalogHash(catalog)!==preview.project_plan.catalogHash) throw Error("Os projetos mudaram. Prepare uma nova prévia.");
+  const projectPlan = preview.project_plan ? planResourceProjects(catalog,preview.scope_project_title ? rows.filter(row=>row.project===preview.scope_project_title) : rows,current?.rows ?? [],preview.project_plan.overwrite,preview.project_plan.create,preview.project_plan.incomingTitles) : null;
+  const activityPlan = preview.activity_plan ? await prepareResourceActivities(rows.filter(row => preview.activity_input_ids.includes(row.id)), new Map((preview.activity_plan as ActivityPlan).items.map(item => [item.resourceId,item.sourceRow])),projectPlan?.create) : null;
   const resolvedId = randomUUID();
-  const resolvedHash = createHash("sha256").update(JSON.stringify({parent:hash,rows,decisions,activityPlan})).digest("hex");
-  await getSql()`INSERT INTO resource_import(id,source_file_id,content_hash,sheet_name,rows,errors,base_id,resolved_from,decisions,scope_project_id,scope_project_title,activity_plan,activity_input_ids)
-    VALUES (${resolvedId},${preview.source_file_id},${resolvedHash},${preview.sheet_name},${getSql().json(rows)},'[]',${preview.base_id},${id},${getSql().json(decisions)},${preview.scope_project_id},${preview.scope_project_title},${activityPlan ? getSql().json(activityPlan) : null},${preview.activity_input_ids ? getSql().json(preview.activity_input_ids) : null})`;
-  return {...previewResult(resolvedId,resolvedHash,current?.rows ?? [],rows,[],preview.scope_project_title),differences:[],resolved:true,activities:activitySummary(activityPlan)};
+  const resolvedHash = createHash("sha256").update(JSON.stringify({parent:hash,rows,decisions,activityPlan,projectPlan})).digest("hex");
+  await getSql()`INSERT INTO resource_import(id,source_file_id,content_hash,sheet_name,rows,errors,base_id,resolved_from,decisions,scope_project_id,scope_project_title,activity_plan,activity_input_ids,project_plan)
+    VALUES (${resolvedId},${preview.source_file_id},${resolvedHash},${preview.sheet_name},${getSql().json(rows)},'[]',${preview.base_id},${id},${getSql().json(decisions)},${preview.scope_project_id},${preview.scope_project_title},${activityPlan ? getSql().json(activityPlan) : null},${preview.activity_input_ids ? getSql().json(preview.activity_input_ids) : null},${projectPlan ? getSql().json(projectPlan) : null})`;
+  return {...previewResult(resolvedId,resolvedHash,current?.rows ?? [],rows,[],preview.scope_project_title),differences:[],resolved:true,activities:activitySummary(activityPlan),projects:projectPlan};
 }
 
 function activitySummary(plan:ActivityPlan|null){return plan ? {added:plan.added,updated:plan.updated,unchanged:plan.unchanged,adjusted:plan.adjusted,legacy:plan.legacy} : null;}

@@ -4,13 +4,14 @@ import {getSql} from './database';
 import {activityValues} from './resource-activity-domain';
 import type {ResourceRow} from './resource-import-domain';
 export type ActivityPlan = {items:Array<ReturnType<typeof activityValues> & {resourceId:string;sourceRow:number;activityId:string;projectId:string;expectedImport:string|null;changed:boolean}>;added:number;updated:number;unchanged:number;adjusted:number;legacy:number};
-export async function prepareResourceActivities(rows:ResourceRow[], sourceRows:Map<string,number>):Promise<ActivityPlan> {
+export async function prepareResourceActivities(rows:ResourceRow[], sourceRows:Map<string,number>,newProjects:Array<{id:string;title:string}>=[]):Promise<ActivityPlan> {
  const sql=getSql();
  const [projects,links,legacy]=await Promise.all([
   sql`SELECT id,title,coalesce(nullif(resource_source_title,''),title) source_title FROM project`,
   sql`SELECT l.resource_id,l.activity_id,l.latest_import_id::text,a.project_id,a.description,a.seconds,a.amount,a.date,a.bm,a.adjusted FROM resource_activity_state a JOIN resource_activity_link l ON l.activity_id=a.id`,
   sql`SELECT resource_id FROM resource_activity_legacy`,
  ]);
+ projects.push(...newProjects.map(p=>({...p,source_title:p.title})));
  const prior=new Map(links.map(l=>[l.resource_id,l]));const protectedIds=new Set(legacy.map(r=>r.resource_id));
  const result:ActivityPlan={items:[],added:0,updated:0,unchanged:0,adjusted:0,legacy:0};
  for(const row of rows){
