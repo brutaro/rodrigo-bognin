@@ -95,7 +95,7 @@ try {
  const bad=await api({action:'prepare',sourceId:await upload('ID;Data;Atividade;Valor;Horas;Boletim\nA1;2026-09-07;;45,00;1,5;BM-2\n'),projectId:a,ordinal:0,mapping:changedMapping,includeActivities:true},false);
  assert.match(bad.error,/preencha Atividade/);assert.equal(Number(state().amount),45);
  // The global importer still sees both projects, including deletions requiring a decision.
- const global=await api({action:'prepare',sourceId:await upload('ID;Projeto;Data;Atividade;Valor\nA1;Projeto A sintético;2026-09-07;Entrega A;30,00\n'),ordinal:0,mapping:{id:0,project:1,date:2,activity:3,amount:4}});
+ const global=await api({action:'prepare',overwrite:true,sourceId:await upload('ID;Projeto;Data;Atividade;Valor\nA1;Projeto A sintético;2026-09-07;Entrega A;30,00\n'),ordinal:0,mapping:{id:0,project:1,date:2,activity:3,amount:4}});
  assert.deepEqual(global.differences.map(d=>d.id).sort(),['A1','A2','B1']);
  await page.goto(base+`/projetos/${a}`);assert.match(await page.locator('main').innerText(),/55,00/);
  await page.setViewportSize({width:390,height:844});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
@@ -104,5 +104,53 @@ try {
  await page.screenshot({path:'/tmp/tria-project-import-mobile.png',fullPage:true});
  assert.deepEqual(errors,[]);
  assert.equal((await fetch(base+'/api/sources/resources',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+
+ // Substituição integral: zero e executor vazio são dados novos; ausentes saem da base.
+ const zeroSource=await upload('ID;Projeto;Data;Atividade;Valor;Horas;Executor\nA1;Projeto A sintético;2026-09-07;Entrega zerada;;;\n');
+ const zeroPreview=await api({action:'prepare',overwrite:true,sourceId:zeroSource,ordinal:0,mapping:{id:0,project:1,date:2,activity:3,amount:4,hours:5,executor:6}});
+ assert.equal(zeroPreview.errorCount,0);assert.equal(zeroPreview.totalCents,'0');
+ const zeroResolved=await api({action:'resolve',id:zeroPreview.id,hash:zeroPreview.hash,decisions:Object.fromEntries(zeroPreview.differences.map(d=>[d.id,'incoming']))});
+ assert.equal(zeroResolved.count,1);await apply(zeroResolved);
+ const stored=JSON.parse(db('SELECT i.rows FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id WHERE c.singleton'));
+ assert.equal(stored.length,1);assert.equal(stored[0].amount,'0');assert.equal(stored[0].hours,'0');assert.equal(stored[0].executor,'');
+ assert.equal((await apply(zeroResolved)).reused,true);
+ console.log('OK: substituição integral persiste zeros, remove ausentes, preserva histórico e não soma nem duplica registros.');
+
+ // Novos projetos só nascem ao aplicar. Carga normal mantém os ausentes.
+ const lifecycleMapping={id:0,project:1,date:2,activity:3,amount:4,hours:5};
+ const lifecycleCsv='ID;Projeto;Data;Atividade;Valor;Horas\nNEW1;Projeto Novo Importado;2026-09-11;Entrega nova;0;0\nNEW2;Projeto Excedente Importado;2026-09-11;Outra entrega;20;1\n';
+ const newSource=await upload(lifecycleCsv);
+ const lifecycle=await api({action:'prepare',sourceId:newSource,ordinal:0,mapping:lifecycleMapping,includeActivities:true});
+ assert.equal(lifecycle.projects.create.length,2);assert.equal(db("SELECT count(*) FROM project WHERE title='Projeto Novo Importado'"),'0');
+ await apply(lifecycle);assert.equal(db("SELECT count(*) FROM project WHERE title='Projeto Novo Importado'"),'1');
+ assert.equal((await apply(lifecycle)).reused,true);
+ // Um arquivo enviado deve continuar disponível mesmo se a nova carga arquivar o projeto.
+ const excessId=lifecycle.projects.create.find(p=>p.title==='Projeto Excedente Importado').id;
+ const evidenceBytes=await (await page.request.get(base+'/api/reports/projects/'+excessId)).body();
+ const evidenceUpload=await page.request.post(base+'/api/projects/'+excessId+'/files',{headers:{Origin:base,'Content-Type':'application/pdf','x-tria-file-title':'Evidência preservada','x-tria-file-name':'evidencia.pdf'},data:evidenceBytes});
+ assert.equal(evidenceUpload.status(),201);
+ const evidenceVersion=(await evidenceUpload.json()).versionId;
+ const preservedDownload=async()=>{
+  const response=await page.request.get(base+'/api/files/'+evidenceVersion+'/download');
+  assert.equal(response.status(),200);assert.deepEqual(await response.body(),evidenceBytes);
+ };
+ await preservedDownload();
+ const partialSource=await upload('ID;Projeto;Data;Atividade;Valor;Horas\nNEW1;Projeto Novo Importado;2026-09-11;Entrega nova;0;0\n');
+ const partial=await api({action:'prepare',sourceId:partialSource,ordinal:0,mapping:lifecycleMapping});
+ assert.equal(partial.projects.archive.length,0);assert.equal(partial.absent,0);await apply(partial);
+ const overwrite=await api({action:'prepare',sourceId:partialSource,ordinal:0,mapping:lifecycleMapping,overwrite:true});
+ assert.ok(overwrite.projects.archive.some(p=>p.title==='Projeto Excedente Importado'));
+ assert.equal(db("SELECT archived_at IS NULL FROM project WHERE title='Projeto Excedente Importado'"),'t');
+ const overwriteResolved=await api({action:'resolve',id:overwrite.id,hash:overwrite.hash,decisions:Object.fromEntries(overwrite.differences.map(d=>[d.id,'incoming']))});
+ await apply(overwriteResolved);await preservedDownload();assert.equal(db("SELECT archived_at IS NOT NULL FROM project WHERE title='Projeto Excedente Importado'"),'t');
+ assert.equal(db("SELECT count(*) FROM bm_activity a JOIN project p ON p.id=a.project_id WHERE p.title='Projeto Excedente Importado'"),'1');
+ const restoredProject=await api({action:'prepare',sourceId:newSource,ordinal:0,mapping:lifecycleMapping});
+ assert.equal(restoredProject.projects.create.length,0);assert.equal(restoredProject.projects.restore.length,1);await apply(restoredProject);await preservedDownload();
+ assert.equal(db("SELECT archived_at IS NULL FROM project WHERE title='Projeto Excedente Importado'"),'t');
+ const staleProjects=await api({action:'prepare',sourceId:partialSource,ordinal:0,mapping:lifecycleMapping,overwrite:true});
+ await create('Projeto criado depois da prévia');
+ const staleProjectResult=await api({action:'resolve',id:staleProjects.id,hash:staleProjects.hash,decisions:Object.fromEntries(staleProjects.differences.map(d=>[d.id,'incoming']))},false);
+ assert.match(staleProjectResult.error,/projetos mudaram/i);
+ console.log('OK: novos projetos e atividades atômicos, prévia sem criação, carga normal preserva ausentes, sobrescrita arquiva, retorno reativa e catálogo alterado bloqueia prévia antiga.');
  console.log('OK: envio UI CSV/XLSX, projeto automático, prévia, decisões, preservação de outro projeto, repetição, colisão, concorrência, importação global, atividades sem duplicação, ajustes manuais preservados, restauração, mobile e autenticação.');
 } catch(error) {await page.screenshot({path:'/tmp/tria-project-import-failure.png',fullPage:true});throw error;} finally {await browser.close();}

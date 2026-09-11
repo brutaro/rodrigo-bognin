@@ -37,8 +37,9 @@ export function validateResourceRows(rows: string[][], mapping: ResourceMapping,
       const rawProject = (row[mapping.project] ?? "").trim();
       if (scope && rawProject && !scope.aliases.includes(rawProject)) throw new Error("projeto diferente do projeto selecionado");
       const value = (key: string) => key === "project" && scope ? scope.title : (row[mapping[key]] ?? "").trim();
-      for (const key of ["id", "project", "amount"]) if (!value(key)) throw new Error(`campo ${key} vazio`);
-      if (Object.keys(mapping).some(key => value(key).startsWith("="))) throw new Error("fórmula: salve os valores calculados antes de importar");
+      for (const key of ["id", "project"]) if (!value(key)) throw new Error(`campo ${key} vazio`);
+      const missingResults = resourceFields.filter(field => value(field.key).startsWith("="));
+      if (missingResults.length) throw new Error(`${missingResults.map(field => field.label).join(", ")}: fórmula sem resultado válido salvo. Recalcule no Excel e salve o arquivo`);
       const id = value("id");
       if (ids.has(id)) throw new Error(`ID ${id} repetido`);
       ids.add(id);
@@ -46,7 +47,7 @@ export function validateResourceRows(rows: string[][], mapping: ResourceMapping,
       if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) date = date.split("/").reverse().join("-");
       if (/^\d{5}$/.test(date)) date = new Date(Date.UTC(1899, 11, 30) + Number(date) * 86400000).toISOString().slice(0, 10);
       if (date && (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0, 10) !== date)) throw new Error("data inválida");
-      const result = { id, project: value("project"), date, activity: value("activity"), amount: decimal(value("amount")), hours: value("hours") ? decimal(value("hours")) : "", nature: value("nature"), bm: value("bm"), executor: value("executor") };
+      const result = { id, project: value("project"), date, activity: value("activity"), amount: decimal(value("amount") || "0"), hours: mapping.hours >= 0 ? decimal(value("hours") || "0") : "", nature: value("nature"), bm: value("bm"), executor: value("executor") };
       if (id.length > 120 || result.project.length > 300 || result.activity.length > 10000 || result.executor.length > 300) throw new Error("texto muito longo");
       valid.push(result);
     } catch (error) { errors.push(`Linha ${locators?.[index]?.replace(/^row:/, "") ?? index + 2}: ${error instanceof Error ? error.message : "inválida"}.`); }
@@ -99,15 +100,6 @@ export function mergeProjectResources(current: ResourceRow[], incoming: Resource
   return [...others, ...incoming];
 }
 
-// Ausência de nomes não apaga a associação anterior; mover um ID não copia pessoas entre projetos.
-export function preserveResourceExecutors(current: ResourceRow[], next: ResourceRow[]) {
-  const prior = new Map(current.map(row => [row.id, row]));
-  return next.map(row => {
-    const before = prior.get(row.id);
-    return !row.executor?.trim() && before?.project === row.project && before.executor?.trim()
-      ? { ...row, executor: before.executor } : row;
-  });
-}
 export function projectExecutors(rows: ResourceRow[], project: string) {
   const names = new Map<string, string>();
   for (const row of rows) if (row.project === project && row.executor?.trim()) {

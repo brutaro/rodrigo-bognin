@@ -85,13 +85,13 @@ try {
  assert.deepEqual(await executorList(a),['ana silva','bruno lima']);assert.deepEqual(await executorList(b),['carla souza']);
  const noNames=await source('ID;Data;Atividade;Valor\nE1;2026-09-09;Primeira;10,00\nE2;2026-09-09;Segunda;20,00\nE3;2026-09-09;Terceira;30,00\n');
  await apply(await post('/api/sources/resources',{action:'prepare',sourceId:noNames,ordinal:0,projectId:a,mapping:{id:0,date:1,activity:2,amount:3}}));
- assert.deepEqual(await executorList(a),['ana silva','bruno lima']);
+ assert.deepEqual(await executorList(a),[]);
  const renamed=await source('ID;Data;Atividade;Valor;Executor\nE1;2026-09-09;Primeira;10,00;\nE2;2026-09-09;Segunda;20,00;\nE3;2026-09-09;Terceira;30,00;Daniel Alves\n');
  const changed=await post('/api/sources/resources',{action:'prepare',sourceId:renamed,ordinal:0,projectId:a,mapping:{id:0,date:1,activity:2,amount:3,executor:4}});
  assert.deepEqual(changed.differences.map(d=>d.id),['E3']);await apply(changed);
- assert.deepEqual(await executorList(a),['ana silva','daniel alves']);assert.deepEqual(await executorList(b),['carla souza']);
+ assert.deepEqual(await executorList(a),['daniel alves']);assert.deepEqual(await executorList(b),['carla souza']);
  await page.screenshot({path:'/tmp/tria-local-executores.png'});
- console.log('OK: executores globais/por projeto, deduplicação, vazios/ausência preservados e alteração com decisão.');
+ console.log('OK: executores globais/por projeto, deduplicação, vazios/ausência substituem os nomes anteriores e alteração com decisão.');
  const replacement=await source('ID;Projeto;Data;Atividade;Valor;Executor\nE1;Equipe Alfa sintética;2026-09-09;Primeira;10,00;Ana Silva\n');
  await apply(await post('/api/sources/resources',{action:'prepare',sourceId:replacement,ordinal:0,projectId:a,mapping}),{E2:'incoming',E3:'incoming'});
  assert.deepEqual(await executorList(a),['ana silva']);
