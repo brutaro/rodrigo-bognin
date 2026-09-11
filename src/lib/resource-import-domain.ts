@@ -110,3 +110,16 @@ export function projectExecutors(rows: ResourceRow[], project: string) {
   }
   return [...names.values()].sort((a,b) => a.localeCompare(b, "pt-BR"));
 }
+
+export function resourcePeriod(rows: readonly Pick<ResourceRow, "date">[]): string | null {
+  let first = "", last = "";
+  for (const { date } of rows) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) continue;
+    if (!first || date < first) first = date;
+    if (!last || date > last) last = date;
+  }
+  const monthYear = (date: string) => `${date.slice(5, 7)}/${date.slice(0, 4)}`;
+  return first ? `${monthYear(first)} a ${monthYear(last)}` : null;
+}

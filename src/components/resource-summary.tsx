@@ -2,15 +2,17 @@ import Link from "next/link";
 import { currentResources } from "@/lib/resource-import";
 import { isDatabaseConfigured } from "@/lib/database";
 import { formatBrlFromCents } from "@/lib/workspace";
-import { cents, resourceTotalCents } from "@/lib/resource-import-domain";
+import { cents, resourcePeriod, resourceTotalCents } from "@/lib/resource-import-domain";
 export async function ResourceSummary({ projectTitle, projectId }: { projectTitle?: string; projectId?: string }) {
   if (!isDatabaseConfigured()) return null;
   const current = await currentResources();
   const rows = current?.rows.filter(row => !projectTitle || row.project === projectTitle) ?? [];
+  const period = !projectTitle && current ? resourcePeriod(current.rows) : null;
   if (projectTitle && !rows.length) return null;
   return <section className="my-6 rounded-lg border border-[var(--border)] bg-white p-6">
     <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold text-[var(--ink)]">Aplicação de recursos</h2><Link href={projectId ? `/projetos/${encodeURIComponent(projectId)}/importar-planilha` : "/fontes/base-consolidada"} className="text-sm font-semibold text-[var(--brand)] underline">Atualizar planilha</Link></div>
     {!current ? <p className="mt-3 text-sm text-[var(--ink-muted)]">Importe a Base Tratada para acompanhar a aplicação de recursos. Os projetos e registros já existentes continuam disponíveis abaixo.</p> : <>
+      {!projectTitle && <p className="mt-3 text-sm text-[var(--ink-muted)]">Período apurado: <span className="font-semibold text-[var(--ink)]">{period ?? "Não informado"}</span></p>}
       <div className="mt-5 grid gap-5 sm:grid-cols-3"><div><p className="text-sm text-[var(--ink-muted)]">{projectTitle ? "Valor da base do projeto" : "Valor da base consolidada"}</p><p className="mt-1 text-3xl font-bold text-[#A94722]">{formatBrlFromCents(resourceTotalCents(rows).toString())}</p></div><div><p className="text-sm text-[var(--ink-muted)]">Lançamentos no recorte</p><p className="mt-1 text-3xl font-bold">{rows.length.toLocaleString("pt-BR")}</p></div><div><p className="text-sm text-[var(--ink-muted)]">Última versão da base</p><p className="mt-2 font-semibold">{new Date(current.appliedAt).toLocaleString("pt-BR",{timeZone:"America/Sao_Paulo"})}</p></div></div>
       <p className="mt-4 text-sm text-[var(--ink-muted)]">Última importação da base: {current.sheet}. Este valor representa a aplicação registrada na planilha; não comprova pagamento ou reembolso e não é somado às medições anteriores.</p>
       <a className="mt-4 inline-block text-sm underline text-[var(--brand)]" href={`/api/sources/resources/export?id=${current.id}`}>Baixar base em CSV</a>

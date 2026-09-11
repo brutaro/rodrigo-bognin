@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateResourceRows, suggestResourceMapping, compareResources, cents, resourceTotalCents } from "./resource-import-domain";
+import { validateResourceRows, suggestResourceMapping, compareResources, cents, resourcePeriod, resourceTotalCents } from "./resource-import-domain";
 const headers = ["ID", "Projeto", "Data", "Atividade", "Valor (R$)", "Horas", "Executor", "Curso", "Trilha"];
 const mapping = suggestResourceMapping(headers);
 describe("Carga real de recursos", () => {
@@ -103,4 +103,38 @@ it("importa vazios numéricos como zero mas bloqueia fórmula sem resultado", ()
  expect(validateResourceRows([row],mapping,headers.length).rows[0]).toMatchObject({amount:"0",hours:"0",executor:""});
  expect(validateResourceRows([[...row.slice(0,4),"",""]],mapping,headers.length).rows[0]).toMatchObject({amount:"0",hours:"0"});
  expect(validateResourceRows([[...row.slice(0,4),"=L2*M2","=1+1"]],mapping,headers.length).errors[0]).toContain("Valor (R$), Horas (opcional): fórmula sem resultado válido salvo");
+});
+
+describe("Período apurado da base vigente", () => {
+  const rows = (...dates: string[]) => dates.map(date => ({ date }));
+  it("usa os extremos de todas as linhas, sem depender da ordem ou limitar à amostra", () => {
+    const data = rows(...Array(120).fill("2025-01-10"), "2025-10-31", "2024-05-01");
+    expect(resourcePeriod(data)).toBe("05/2024 a 10/2025");
+  });
+  it("ignora datas vazias ou inválidas e não desloca o mês por fuso horário", () => {
+    expect(resourcePeriod(rows("", "inválida", "2024-02-30", "2024-13-01", "2024-05-01", "2025-10-01"))).toBe("05/2024 a 10/2025");
+    expect(resourcePeriod(rows("2024-02-29"))).toBe("02/2024 a 02/2024");
+    expect(resourcePeriod(rows("2024-02-01", "2024-02-29"))).toBe("02/2024 a 02/2024");
+  });
+  it("não inventa período sem datas e recalcula para a carga recebida", () => {
+    expect(resourcePeriod([])).toBeNull();
+    expect(resourcePeriod(rows("", "2025-02-29"))).toBeNull();
+    expect(resourcePeriod(rows("2026-01-01", "2026-02-01"))).toBe("01/2026 a 02/2026");
+  });
+});
+
+it("calcula o período sem modificar registros, ordem, valores ou total da carga", () => {
+  const data = validateResourceRows([
+    ["L2", "Projeto B", "2025-10-31", "Entrega B", "0", "0", "Executor B"],
+    ["L1", "Projeto A", "2024-05-01", "Entrega A", "1234.5678", "2.5", "Executor A"],
+    ["L3", "Projeto A", "", "Ajuste", "-34.5678", "0", ""],
+  ], mapping, headers.length).rows;
+  const before = JSON.stringify(data);
+  const total = resourceTotalCents(data);
+  data.forEach(Object.freeze);
+  Object.freeze(data);
+  expect(resourcePeriod(data)).toBe("05/2024 a 10/2025");
+  expect(JSON.stringify(data)).toBe(before);
+  expect(resourceTotalCents(data)).toBe(total);
+  expect(total).toBe(120000n);
 });
