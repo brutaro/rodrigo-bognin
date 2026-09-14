@@ -123,3 +123,17 @@ export function resourcePeriod(rows: readonly Pick<ResourceRow, "date">[]): stri
   const monthYear = (date: string) => `${date.slice(5, 7)}/${date.slice(0, 4)}`;
   return first ? `${monthYear(first)} a ${monthYear(last)}` : null;
 }
+
+// Taxa derivada dos valores da carga vigente, sem arredondar antes da divisão.
+export function resourceHourlyRateCents(row: Pick<ResourceRow, "amount" | "hours">): bigint | null {
+  const scaled = (value: string) => {
+    if (!/^-?\d{1,14}(\.\d{1,16})?$/.test(value)) return null;
+    const [integer, fraction = ""] = value.replace(/^-/, "").split(".");
+    const number = BigInt(integer) * 10n ** 16n + BigInt(fraction.padEnd(16, "0"));
+    return value.startsWith("-") ? -number : number;
+  };
+  const amount = scaled(row.amount), hours = scaled(row.hours);
+  if (amount === null || hours === null || hours <= 0n) return null;
+  const absolute = amount < 0n ? -amount : amount;
+  return ((absolute * 100n * 2n + hours) / (hours * 2n)) * (amount < 0n ? -1n : 1n);
+}

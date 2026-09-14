@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateResourceRows, suggestResourceMapping, compareResources, cents, resourcePeriod, resourceTotalCents } from "./resource-import-domain";
+import { validateResourceRows, suggestResourceMapping, compareResources, cents, resourceHourlyRateCents, resourcePeriod, resourceTotalCents } from "./resource-import-domain";
 const headers = ["ID", "Projeto", "Data", "Atividade", "Valor (R$)", "Horas", "Executor", "Curso", "Trilha"];
 const mapping = suggestResourceMapping(headers);
 describe("Carga real de recursos", () => {
@@ -137,4 +137,21 @@ it("calcula o período sem modificar registros, ordem, valores ou total da carga
   expect(JSON.stringify(data)).toBe(before);
   expect(resourceTotalCents(data)).toBe(total);
   expect(total).toBe(120000n);
+});
+
+describe("Valor/hora calculado", () => {
+ it.each([
+  ["114.331", "1.6333", 7000n], ["10", "3", 333n], ["0.01", "2", 1n],
+  ["0", "2", 0n], ["-10", "3", -333n], ["0.004", "0.001", 400n],
+  ["99999999999999", "1", 9999999999999900n],
+  ["58.331000000000003", "0.8333", 7000n],
+  ["0.0000000000000007", "0.0000000000000001", 700n],
+  ["8300", "80", 10375n],
+ ])("divide %s por %s na precisão original e arredonda somente a taxa", (amount,hours,expected) => {
+  const row=Object.freeze({amount,hours});expect(resourceHourlyRateCents(row)).toBe(expected);
+ });
+ it.each(["", "0", "-1", "inválido"])("não inventa taxa para horas %s",hours=>{
+  expect(resourceHourlyRateCents({amount:"10",hours})).toBeNull();
+ });
+ it("recusa valor inválido",()=>expect(resourceHourlyRateCents({amount:"NaN",hours:"1"})).toBeNull());
 });
