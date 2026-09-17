@@ -167,7 +167,7 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
   ]);
   const resource = await sql<{amount: string; applied_at: string; import_id: string}[]>`SELECT sum((r->>'amount')::numeric)::text amount, i.applied_at::text, i.id::text import_id
     FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id
-    CROSS JOIN LATERAL jsonb_array_elements(i.rows) r WHERE r->>'project'=${row.resource_source_title || row.title} GROUP BY i.id`;
+    CROSS JOIN LATERAL jsonb_array_elements(i.rows) r WHERE resource_project_id(r->>'project')=${id} GROUP BY i.id`;
   const histories = new Map<string, Project["activities"][number]["adjustmentHistory"]>();
   for (const entry of activityHistory) {
     const list = histories.get(entry.activity_id) ?? [];

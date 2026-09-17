@@ -1,4 +1,6 @@
 import {readContract} from './contract-repository';
+import {readInvoiceCash} from './fiscal-payment-repository';
+import {invoicePaymentEntry,invoicePaymentIssues} from './fiscal-payment-domain';
 import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { Sql, TransactionSql } from "postgres";
@@ -31,11 +33,31 @@ export async function readCashProjects(tx: Query, projectId?: string) {
     LEFT JOIN current_cost_confirmation c ON c.entry_id=m.id LEFT JOIN current_reimbursement_status r ON r.entry_id=m.id
     WHERE (${projectId ?? null}::text IS NULL AND p.archived_at IS NULL) OR p.id=${projectId ?? null}
     ORDER BY m.created_at,m.id`;
-  return projects.map(project=>{
-    const entries=rows.filter(row=>row.project_id===project.id).map(row=>row.entry);
-    const sourceHash=basisHash(entries);
-    return {...project,entries,sourceHash,result:calculateCash(entries,project.review,sourceHash)};
+  const invoices=await readInvoiceCash(tx);
+  const scoped=projects.map(project=>{
+    const notes=invoices.notes.filter(note=>note.declaration?.projectId===project.id);
+    const entries=[...rows.filter(row=>row.project_id===project.id).map(row=>row.entry),...notes.flatMap(note=>{const entry=invoicePaymentEntry(note,invoices.payments);return entry?[entry]:[];})];
+    const sourceHash=notes.length ? createHash('sha256').update(basisHash(entries)+JSON.stringify(notes)).digest('hex') : basisHash(entries);
+    const result=calculateCash(entries,project.review,sourceHash);
+    const issues=notes.flatMap(note=>invoicePaymentIssues(note,invoices.payments));
+    if(issues.length){result.issues.push(...issues);result.resultCents=null;result.outstandingCents=null;result.coveragePercent=null;result.outstandingIssue='Confira os vínculos de notas fiscais e pagamentos.';}
+    return {...project,entries,sourceHash,result};
   });
+  if(!projectId){
+    const outside=invoices.notes.filter(note=>note.declaration?.status==='confirmado'&&!projects.some(project=>project.id===note.declaration!.projectId));
+    const entries=outside.flatMap(note=>{
+      const linked=invoices.payments.find(p=>p.id===note.declaration!.paymentEntryId&&p.confirmed);
+      if(linked)return [{id:linked.id,kind:'Pagamento' as const,amountCents:linked.amountCents,description:linked.description,origin:'Informado por Rodrigo' as const,documentState:'Sem arquivo associado' as const,createdAt:note.declaration!.createdAt,confirmation:{status:'confirmado' as const,effectiveOn:linked.paidOn,costEntryId:null,revision:note.declaration!.revision}}];
+      const entry=invoicePaymentEntry(note,invoices.payments);return entry?[entry]:[];
+    });
+    if(outside.length){
+      const sourceHash=basisHash(entries),result=calculateCash(entries,null,sourceHash);
+      result.issues.push('Há notas pagas sem projeto ativo associado. Confira a alocação antes de fechar o resultado.');
+      result.issues.push(...outside.flatMap(note=>invoicePaymentIssues(note,invoices.payments)));
+      scoped.push({id:'fiscal-unallocated',title:'Notas pagas — sem projeto ativo',review:null,entries,sourceHash,result});
+    }
+  }
+  return scoped;
 }
 export async function readCashProject(tx: Query, projectId: string) {
   const [project]=await readCashProjects(tx,projectId);

@@ -10,7 +10,7 @@ const rows=vi.hoisted(()=>[
 vi.mock('@/lib/auth',()=>({apiAuthenticationStatus:async()=>state.authenticated?'authenticated':'unauthenticated'}));
 vi.mock('@/lib/database',()=>({getSql:()=>async(parts:TemplateStringsArray)=>{
  const query=parts.join('');state.calls.push(query);
- return query.includes('FROM resource_import')?(state.exists?[{rows}]:[]):(state.project===null?[]:[{source_title:state.project}]);
+ return query.includes('FROM resource_import')?(state.exists?[{rows}]:[]):(state.project===null?[]:[{id:'BMP-001',title:'Projeto renomeado',source_title:state.project},{id:'manual-1',title:'Outro cadastro',source_title:'Outra origem'}]);
 }}));
 const id='11111111-1111-4111-8111-111111111111';
 const request=(suffix='')=>new Request(`http://localhost/api/sources/resources/export?id=${id}${suffix}`);

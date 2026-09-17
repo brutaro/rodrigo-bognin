@@ -1,4 +1,5 @@
 import "server-only";
+import {resourceProjectTitles} from './resource-project-resolution';
 import {resourceProjectCatalog,projectCatalogHash,planResourceProjects,type ResourceProjectPlan} from "./resource-project-import";
 import { createHash, randomUUID } from "node:crypto";
 import { prepareResourceActivities, type ActivityPlan } from "./resource-activity-import";
@@ -42,18 +43,20 @@ export async function currentResources() {
   const [row] = await getSql()`SELECT i.id::text, i.rows, i.applied_at::text, i.sheet_name FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id WHERE c.singleton`;
   return row ? { id: row.id as string, rows: row.rows as ResourceRow[], appliedAt: row.applied_at as string, sheet: row.sheet_name as string } : null;
 }
-function previewResult(id: string, hash: string, current: ResourceRow[], rows: ResourceRow[], errors: string[], title?: string | null) {
-  const before = title ? current.filter(row => row.project === title) : current;
-  const after = title ? rows.filter(row => row.project === title) : rows;
+function previewResult(id: string, hash: string, current: ResourceRow[], rows: ResourceRow[], errors: string[], title?: string | null, aliases: string[] = title ? [title] : []) {
+  const before = title ? current.filter(row => aliases.includes(row.project)) : current;
+  const after = title ? rows.filter(row => aliases.includes(row.project)) : rows;
   return { id, hash, differences: resourceDifferences(before, after), count: after.length, errors: errors.slice(0,30), errorCount: errors.length, sample: after.slice(0,20), totalCents: resourceTotalCents(after).toString(), ...compareResources(before, after) };
 }
 export async function prepareResources(sourceId: string, ordinal: number, mapping: ResourceMapping, delimiter?: "," | ";" | "\t", projectId?: string, includeActivities = false, overwrite = false) {
   if (overwrite && projectId) throw new Error("Sobrescrever projetos está disponível somente na carga global.");
   let scope: { title: string; aliases: string[] } | undefined;
   if (projectId) {
-    const [project] = await getSql()`SELECT title,coalesce(nullif(resource_source_title,''),title) source_title FROM project WHERE id=${projectId}`;
+    const catalog = await resourceProjectCatalog();
+    const project = catalog.find(project => project.id === projectId);
     if (!project) throw new Error("Projeto não encontrado.");
-    scope = { title: project.source_title, aliases: [project.title, project.source_title] };
+    scope = { title: project.title, aliases: resourceProjectTitles(catalog,projectId) };
+    if(!scope.aliases.includes(scope.title)) throw new Error('Nome de projeto ambíguo. Confira os cadastros antes de importar.');
   }
   const doc = await sourceDocument(sourceId, delimiter);
   const sheet = doc.sheets.find(s => s.selection.ordinal === ordinal);
@@ -62,7 +65,7 @@ export async function prepareResources(sourceId: string, ordinal: number, mappin
   const current = await currentResources();
   const incoming = data.rows;
   const incomingIds = new Set(incoming.map(row=>row.id));
-  const rows = scope ? mergeProjectResources(current?.rows ?? [], incoming, scope.title) : overwrite ? incoming : [...incoming,...(current?.rows ?? []).filter(row=>!incomingIds.has(row.id))];
+  const rows = scope ? mergeProjectResources(current?.rows ?? [], incoming, scope.title,scope.aliases) : overwrite ? incoming : [...incoming,...(current?.rows ?? []).filter(row=>!incomingIds.has(row.id))];
   const projectPlan = !data.errors.length ? planResourceProjects(await resourceProjectCatalog(),rows,current?.rows ?? [],overwrite,[],[...new Set(data.rows.map(row=>row.project))]) : null;
   const activityPlan = includeActivities && !data.errors.length ? await prepareResourceActivities(data.rows, new Map(sheet.rows.map((row,index) => [String(row[mapping.id]).trim(), Number(sheet.locators?.[index]?.replace(/^row:/,"")) || index+2])),projectPlan?.create) : null;
   const activityInputIds = includeActivities ? data.rows.map(row => row.id) : null;
@@ -70,7 +73,7 @@ export async function prepareResources(sourceId: string, ordinal: number, mappin
   const hash = createHash("sha256").update(JSON.stringify({ source: doc.hash, ordinal, mapping, rows, projectId, activityPlan, projectPlan })).digest("hex");
   await getSql()`INSERT INTO resource_import(id,source_file_id,content_hash,sheet_name,rows,errors,base_id,scope_project_id,scope_project_title,activity_plan,activity_input_ids,project_plan)
     VALUES (${id},${sourceId},${hash},${sheet.selection.name},${getSql().json(rows)},${getSql().json(data.errors)},${current?.id ?? null},${projectId ?? null},${scope?.title ?? null},${activityPlan ? getSql().json(activityPlan) : null},${activityInputIds ? getSql().json(activityInputIds) : null},${projectPlan ? getSql().json(projectPlan) : null})`;
-  return {...previewResult(id, hash, current?.rows ?? [], rows, data.errors, scope?.title), activities: activitySummary(activityPlan), projects:projectPlan};
+  return {...previewResult(id, hash, current?.rows ?? [], rows, data.errors, scope?.title,scope?.aliases), activities: activitySummary(activityPlan), projects:projectPlan};
 }
 export async function applyResources(id: string, hash: string) {
   enabled();
@@ -109,7 +112,8 @@ export async function applyResources(id: string, hash: string) {
     const priorIds = new Set(before.map(row => row.id));
     for (const row of after) if (!priorIds.has(row.id)) affected.add(row.project);
     await tx`UPDATE project_draft SET revision=revision+1,updated_at=now() WHERE project_id IN
-      (SELECT id FROM project WHERE coalesce(nullif(resource_source_title,''),title) = ANY(${tx.array([...affected])}::text[]) OR id = ANY(${tx.array(activityProjects)}::text[]))`;
+      (SELECT resource_project_id(title) FROM unnest(${tx.array([...affected])}::text[]) title)
+      OR project_id = ANY(${tx.array(activityProjects)}::text[])`;
     return { id, reused: false, activities: activitySummary(activityPlan) };
   });
 }
@@ -133,7 +137,7 @@ export async function resolveResources(id: string, hash: string, decisions: Reso
   const resolvedHash = createHash("sha256").update(JSON.stringify({parent:hash,rows,decisions,activityPlan,projectPlan})).digest("hex");
   await getSql()`INSERT INTO resource_import(id,source_file_id,content_hash,sheet_name,rows,errors,base_id,resolved_from,decisions,scope_project_id,scope_project_title,activity_plan,activity_input_ids,project_plan)
     VALUES (${resolvedId},${preview.source_file_id},${resolvedHash},${preview.sheet_name},${getSql().json(rows)},'[]',${preview.base_id},${id},${getSql().json(decisions)},${preview.scope_project_id},${preview.scope_project_title},${activityPlan ? getSql().json(activityPlan) : null},${preview.activity_input_ids ? getSql().json(preview.activity_input_ids) : null},${projectPlan ? getSql().json(projectPlan) : null})`;
-  return {...previewResult(resolvedId,resolvedHash,current?.rows ?? [],rows,[],preview.scope_project_title),differences:[],resolved:true,activities:activitySummary(activityPlan),projects:projectPlan};
+  return {...previewResult(resolvedId,resolvedHash,current?.rows ?? [],rows,[],preview.scope_project_title,preview.scope_project_id ? resourceProjectTitles(catalog,preview.scope_project_id) : undefined),differences:[],resolved:true,activities:activitySummary(activityPlan),projects:projectPlan};
 }
 
 function activitySummary(plan:ActivityPlan|null){return plan ? {added:plan.added,updated:plan.updated,unchanged:plan.unchanged,adjusted:plan.adjusted,legacy:plan.legacy} : null;}

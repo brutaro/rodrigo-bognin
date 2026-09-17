@@ -1,4 +1,5 @@
 import 'server-only';
+import {matchingResourceProjects,type ProjectIdentity} from './resource-project-resolution';
 import {createHash} from 'node:crypto';
 import {getSql} from './database';
 import {activityValues} from './resource-activity-domain';
@@ -7,7 +8,7 @@ export type ActivityPlan = {items:Array<ReturnType<typeof activityValues> & {res
 export async function prepareResourceActivities(rows:ResourceRow[], sourceRows:Map<string,number>,newProjects:Array<{id:string;title:string}>=[]):Promise<ActivityPlan> {
  const sql=getSql();
  const [projects,links,legacy]=await Promise.all([
-  sql`SELECT id,title,coalesce(nullif(resource_source_title,''),title) source_title FROM project`,
+  sql<ProjectIdentity[]>`SELECT id,title,coalesce(nullif(resource_source_title,''),title) source_title FROM project`,
   sql`SELECT l.resource_id,l.activity_id,l.latest_import_id::text,a.project_id,a.description,a.seconds,a.amount,a.date,a.bm,a.adjusted FROM resource_activity_state a JOIN resource_activity_link l ON l.activity_id=a.id`,
   sql`SELECT resource_id FROM resource_activity_legacy`,
  ]);
@@ -16,7 +17,7 @@ export async function prepareResourceActivities(rows:ResourceRow[], sourceRows:M
  const result:ActivityPlan={items:[],added:0,updated:0,unchanged:0,adjusted:0,legacy:0};
  for(const row of rows){
   if(protectedIds.has(row.id)){result.legacy++;continue;}
-  const matches=projects.filter(p=>p.source_title===row.project || p.title===row.project);
+  const matches=matchingResourceProjects(projects,row.project);
   if(matches.length!==1) throw Error(`ID ${row.id}: projeto não encontrado ou ambíguo. Cadastre ou confira o nome antes de importar atividades.`);
   const project=matches[0],old=prior.get(row.id),values=activityValues(row);
   if(old && old.project_id!==project.id) throw Error(`ID ${row.id}: a atividade já pertence a outro projeto.`);

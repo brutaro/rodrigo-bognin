@@ -21,6 +21,7 @@ export const financialOrigins = [
 export type FinancialOrigin = (typeof financialOrigins)[number];
 
 export type ManualFinancialEntry = {
+  fiscalNoteId?: string;
   confirmation?: CostConfirmation;
   reimbursement?: ReimbursementStatus;
   proofVersionId?: string;
@@ -61,11 +62,12 @@ export type FinancialGroup =
   | "financial_reference";
 
 export type PublishedFinancialEntry = {
+  fiscalNoteId?: string;
   confirmation?: CostConfirmation;
   reimbursement?: ReimbursementStatus;
   proofVersionId?: string;
   id: string;
-  sourceType: "Referência importada" | "Cadastro manual";
+  sourceType: "Referência importada" | "Cadastro manual" | "Declaração de pagamento de NF";
   financialGroup: FinancialGroup;
   kind: string;
   label: string;
@@ -402,7 +404,8 @@ function publicationContent(
   }));
   const manual: PublishedFinancialEntry[] = draft.manualFinancialEntries.map((entry) => ({
     id: entry.id,
-    sourceType: "Cadastro manual",
+    sourceType: entry.fiscalNoteId ? "Declaração de pagamento de NF" : "Cadastro manual",
+    ...(entry.fiscalNoteId ? {fiscalNoteId:entry.fiscalNoteId} : {}),
     financialGroup:
       entry.kind === "Reembolso"
         ? "reimbursement"
@@ -420,10 +423,10 @@ function publicationContent(
     relatedAmount: null,
     relatedAmountCents: null,
     fullValueEligible: null,
-    relationBasis: "Cadastro manual",
+    relationBasis: entry.fiscalNoteId ? `Declaração do proprietário vinculada à nota ${entry.fiscalNoteId}` : "Cadastro manual",
     currency: "BRL",
     origin: entry.origin,
-    relation: "Sem relação confirmada",
+    relation: entry.fiscalNoteId ? "Pagamento declarado pelo proprietário para o projeto" : "Sem relação confirmada",
     payment: entry.confirmation ? costConfirmationLabel(entry.kind,entry.confirmation) : entry.reimbursement ? reimbursementLabel(entry.reimbursement) : entry.kind === "Pagamento" ? "Informado" : "Não informado",
     ...(entry.confirmation ? {confirmation:structuredClone(entry.confirmation)} : {}),
     ...(entry.reimbursement ? {reimbursement:structuredClone(entry.reimbursement)} : {}),
