@@ -151,6 +151,41 @@ try {
  await create('Projeto criado depois da prévia');
  const staleProjectResult=await api({action:'resolve',id:staleProjects.id,hash:staleProjects.hash,decisions:Object.fromEntries(staleProjects.differences.map(d=>[d.id,'incoming']))},false);
  assert.match(staleProjectResult.error,/projetos mudaram/i);
+ // Regression: a retired duplicate retains a source alias equal to the original's new title.
+ const originalId=db("SELECT id FROM project WHERE title='Projeto Novo Importado'");
+ const replacementId=await create('Serviços renomeados');
+ db("UPDATE project SET title='Serviços renomeados - substituído',archived_at=now() WHERE id='"+replacementId+"'; UPDATE project SET title='Serviços renomeados' WHERE id='"+originalId+"'");
+ const renamedSource=await upload('ID;Projeto;Data;Atividade;Valor;Horas\nNEW1;Serviços renomeados;2026-09-11;Entrega revisada;15;0\n');
+ const renamed=await api({action:'prepare',sourceId:renamedSource,ordinal:0,mapping:lifecycleMapping,includeActivities:true});
+ assert.equal(renamed.projects.create.length,0);assert.equal(renamed.projects.restore.length,0);
+ assert.equal(renamed.activities.added,0);assert.equal(renamed.activities.updated,1);
+ const resolvedRename=await api({action:'resolve',id:renamed.id,hash:renamed.hash,decisions:Object.fromEntries(renamed.differences.map(d=>[d.id,'incoming']))});
+ await apply(resolvedRename);
+ assert.equal(db("SELECT project_id FROM bm_activity a JOIN resource_activity_link l ON l.activity_id=a.id WHERE l.resource_id='NEW1'"),originalId);
+ assert.equal(db("SELECT count(*) FROM bm_activity a JOIN resource_activity_link l ON l.activity_id=a.id WHERE l.resource_id='NEW1'"),'1');
+ const renamedExport=await page.request.get(base+`/api/sources/resources/export?id=${resolvedRename.id}&projectId=${originalId}`);
+ assert.equal(renamedExport.status(),200);assert.match(await renamedExport.text(),/Entrega revisada/);
+ const replacementExport=await page.request.get(base+`/api/sources/resources/export?id=${resolvedRename.id}&projectId=${replacementId}`);
+ assert.doesNotMatch(await replacementExport.text(),/Entrega revisada/);
+ console.log('OK: renomeação com alias arquivado atualiza a mesma atividade, mantém sua propriedade e exporta pelo projeto correto.');
+ // Synthetic fiscal data only: declaration contributes once, without inventing a payment date.
+ db("INSERT INTO fiscal_note(id,batch_id,source_note_id,issue_year,note_number,issue_date,amount,declared_project_id) SELECT 'nf-payment-synthetic',import_batch_id,'nf-payment-synthetic',2025,'SYN-PAY-1','2025-01-01',123.45,id FROM project WHERE id='"+originalId+"'");
+ await page.goto(base+'/caixa/notas-fiscais');
+ await page.getByLabel('Justificativa da confirmação').fill('Pagamento confirmado pelo proprietário no teste sintético');
+ await page.getByRole('checkbox',{name:/Confirmo que os valores/}).check();
+ await page.getByRole('button',{name:'Confirmar pagamentos das notas',exact:true}).click();
+ await page.getByRole('status').filter({hasText:'1 pagamentos confirmados'}).waitFor();
+ assert.equal(db("SELECT count(*) FROM fiscal_payment_declaration WHERE fiscal_note_id='nf-payment-synthetic'"),'1');
+ assert.equal(db("SELECT paid_on IS NULL AND amount_cents=12345 FROM current_fiscal_payment_declaration WHERE fiscal_note_id='nf-payment-synthetic'"),'t');
+ const stalePayment=await page.request.post(base+'/api/fiscal-payments',{headers:{Origin:base},data:{operation:'save',id:'nf-payment-synthetic',revision:'0',status:'confirmado',projectId:originalId,paidOn:null,paymentEntryId:null,separatePayment:false,reason:'Tentativa repetida'}});
+ assert.equal(stalePayment.status(),400);
+ await page.goto(base+`/projetos/${originalId}`);
+ await page.getByText('NF SYN-PAY-1 · pagamento confirmado por Rodrigo.',{exact:false}).waitFor();
+ assert.equal(await page.getByRole('link',{name:'Ver nota e origem',exact:true}).count(),1);
+ const revertedPayment=await page.request.post(base+'/api/fiscal-payments',{headers:{Origin:base},data:{operation:'save',id:'nf-payment-synthetic',revision:'1',status:'revertido',projectId:originalId,paidOn:null,paymentEntryId:null,separatePayment:false,reason:'Reversão sintética preservando histórico'}});
+ assert.equal(revertedPayment.status(),200);
+ assert.equal(db("SELECT count(*) FROM fiscal_payment_declaration WHERE fiscal_note_id='nf-payment-synthetic'"),'2');
+ console.log('OK: NF com declaração explícita aparece uma vez no caixa, mantém data desconhecida, recusa revisão obsoleta e permite reversão auditável.');
  console.log('OK: novos projetos e atividades atômicos, prévia sem criação, carga normal preserva ausentes, sobrescrita arquiva, retorno reativa e catálogo alterado bloqueia prévia antiga.');
  console.log('OK: envio UI CSV/XLSX, projeto automático, prévia, decisões, preservação de outro projeto, repetição, colisão, concorrência, importação global, atividades sem duplicação, ajustes manuais preservados, restauração, mobile e autenticação.');
 } catch(error) {await page.screenshot({path:'/tmp/tria-project-import-failure.png',fullPage:true});throw error;} finally {await browser.close();}
