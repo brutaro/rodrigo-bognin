@@ -97,13 +97,16 @@ try {
  assert.deepEqual(await executorList(a),['ana silva']);
  assert.deepEqual(await executorList(b),['carla souza']);
  console.log('OK: executores de linhas removidas não reaparecem a partir do histórico.');
+ // A suíte anterior preserva suas notas após reverter pagamentos. Confira o delta
+ // global em centavos sem presumir um banco fiscal vazio nem apagar essas notas.
+ const priorFiscalCents=Number(db('SELECT coalesce(sum(round(amount*100)),0)::bigint FROM effective_fiscal_note'));
  const fiscalSource=await source('ID;Número;Data;Valor;Projeto\nNF-E2E-1;99001;2026-09-09;100,00;Equipe Alfa sintética\nNF-E2E-2;99002;2026-09-09;25,00;Equipe Beta sintética\n');
  const fiscalPreview=await post('/api/sources/fiscal',{action:'prepare',sourceId:fiscalSource,ordinal:0,mapping:{sourceId:0,number:1,date:2,amount:3,project:4}});
  assert.equal(fiscalPreview.errorCount,0);await post('/api/sources/fiscal',{action:'apply',id:fiscalPreview.id,hash:fiscalPreview.hash,confirmed:true});
  const noteId=fiscalPreview.rows.find(row=>row.number==='99001').id;
  db(`WITH batch AS (INSERT INTO import_batch(id,source_type,relative_path,sha256,row_count,status) VALUES(gen_random_uuid(),'financial_relations','synthetic-e2e',repeat('c',64),1,'completed') RETURNING id) INSERT INTO financial_relation(fiscal_note_id,batch_id,candidate_project_id,strength,state,verified_related_value) SELECT '${noteId}',id,'${b}','Verificada','Confirmada',40 FROM batch`);
- const fiscalTotals=()=>JSON.parse(db(`SELECT json_build_object('total',(SELECT coalesce(sum(amount),0)::text FROM effective_fiscal_note),'a',(SELECT coalesce(sum(amount),0)::text FROM effective_fiscal_note WHERE declared_project_id='${a}'),'b',(SELECT coalesce(sum(amount),0)::text FROM effective_fiscal_note WHERE declared_project_id='${b}'),'related',(SELECT coalesce(sum(verified_related_value),0)::text FROM effective_fiscal_note WHERE candidate_project_id='${b}'))`));
- assert.deepEqual(Object.values(fiscalTotals()).map(Number),[125,100,25,40]);
+ const fiscalTotals=()=>JSON.parse(db(`SELECT json_build_object('total',(SELECT coalesce(sum(round(amount*100)),0)::text FROM effective_fiscal_note),'a',(SELECT coalesce(sum(round(amount*100)),0)::text FROM effective_fiscal_note WHERE declared_project_id='${a}'),'b',(SELECT coalesce(sum(round(amount*100)),0)::text FROM effective_fiscal_note WHERE declared_project_id='${b}'),'related',(SELECT coalesce(sum(round(verified_related_value*100)),0)::text FROM effective_fiscal_note WHERE candidate_project_id='${b}'))`));
+ assert.deepEqual(Object.values(fiscalTotals()).map(Number),[priorFiscalCents+12500,10000,2500,4000]);
  async function reportText(path){const response=await page.request.get(base+path);assert.equal(response.status(),200,await response.text().then(text=>text.slice(0,80)));return execFileSync('docker',['exec','-i','tria-project-import-test-app-1','pdftotext','-','-'],{input:await response.body(),encoding:'utf8'});}
  assert.match(await reportText('/api/reports/projects/'+a),/100,00/);
  await page.goto(base+'/notas-fiscais?nota='+noteId);
@@ -114,9 +117,11 @@ try {
  await deletion.getByLabel('Motivo da exclusão').fill('Nota sintética excluída no teste local');
  await deletion.getByRole('button',{name:'Confirmar exclusão',exact:true}).click();
  await page.waitForFunction(()=>document.body.innerText.includes('excluída')||document.body.innerText.includes('não foi encontrada'));
- assert.deepEqual(Object.values(fiscalTotals()).map(Number),[25,0,25,0]);
+ assert.deepEqual(Object.values(fiscalTotals()).map(Number),[priorFiscalCents+2500,0,2500,0]);
  assert.equal(db(`SELECT count(*) FROM fiscal_note WHERE id='${noteId}'`),'1');
- const newGlobal=await reportText('/api/reports/global');assert.match(newGlobal,/25,00/);
+ const newGlobal=await reportText('/api/reports/global');
+ const expectedGlobal=((priorFiscalCents+2500)/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+ assert.ok(newGlobal.includes(expectedGlobal),`Relatório global deve preservar notas anteriores e totalizar ${expectedGlobal}`);
  const newProject=await reportText('/api/reports/projects/'+a);assert.doesNotMatch(newProject,/100,00/);
  await page.goto(base+'/notas-fiscais');assert.match(await page.locator('main').innerText(),/99002/);assert.doesNotMatch(await page.locator('main').innerText(),/99001/);
  console.log('OK: excluir nota via UI recalcula vínculos e total geral; relatórios novos refletem exclusão; fonte e nota restante preservadas.');
