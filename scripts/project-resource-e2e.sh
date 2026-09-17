@@ -55,4 +55,5 @@ docker run --rm --network "${namespace}_default" \
   -e TRIA_ADMIN_PASSWORD_FILE=/run/test-secrets/db_admin_password \
   "$tools_image" node_modules/.bin/vitest run --config vitest.story-3-2.config.ts \
   tests/integration/local-requirements-postgres.integration.test.ts \
-  tests/integration/upgrade-preservation.integration.test.ts
+  tests/integration/upgrade-preservation.integration.test.ts \
+  tests/integration/fiscal-payment.integration.test.ts
