@@ -1,5 +1,7 @@
 import { apiAuthenticationStatus } from "@/lib/auth";
 import { getSql } from "@/lib/database";
+import {resourceProjectCatalog} from '@/lib/resource-project-import';
+import {resourceProjectTitles} from '@/lib/resource-project-resolution';
 import { resourceFields, type ResourceRow } from "@/lib/resource-import-domain";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
@@ -13,9 +15,11 @@ export async function GET(request: Request) {
  if(!version) return new Response("Versão não encontrada",{status:404});
  let rows=version.rows as ResourceRow[];
  if(projectId!==null){
-  const [project]=await getSql()`SELECT coalesce(nullif(resource_source_title,''),title) source_title FROM project WHERE id=${projectId}`;
+  const catalog=await resourceProjectCatalog();
+  const project=catalog.find(project=>project.id===projectId);
   if(!project) return new Response("Projeto não encontrado",{status:404});
-  rows=rows.filter(row=>row.project===project.source_title);
+  const titles=resourceProjectTitles(catalog,projectId);
+  rows=rows.filter(row=>titles.includes(row.project));
  }
  const escape=(value:string,index:number,numeric=false)=>'"'+(!numeric && /^[\s\u200b]*[=+@-]/.test(value)?"'"+value:value).replace(/"/g,'""')+'"';
  const csv=[resourceFields.map((f,i)=>escape(f.label,i)).join(';'),...rows.map(row=>resourceFields.map((f,i)=>escape(row[f.key] ?? "",i,f.key==='amount'||f.key==='hours')).join(';'))].join('\r\n');
