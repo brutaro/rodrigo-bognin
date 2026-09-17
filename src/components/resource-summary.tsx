@@ -1,4 +1,6 @@
 import Link from "next/link";
+import {resourceProjectCatalog} from '@/lib/resource-project-import';
+import {resourceProjectTitles} from '@/lib/resource-project-resolution';
 import { currentResources } from "@/lib/resource-import";
 import { isDatabaseConfigured } from "@/lib/database";
 import { formatBrlFromCents } from "@/lib/workspace";
@@ -6,7 +8,8 @@ import { cents, resourceHourlyRateCents, resourcePeriod, resourceTotalCents } fr
 export async function ResourceSummary({ projectTitle, projectId }: { projectTitle?: string; projectId?: string }) {
   if (!isDatabaseConfigured()) return null;
   const current = await currentResources();
-  const rows = current?.rows.filter(row => !projectTitle || row.project === projectTitle) ?? [];
+  const titles = projectId ? resourceProjectTitles(await resourceProjectCatalog(),projectId) : projectTitle ? [projectTitle] : null;
+  const rows = current?.rows.filter(row => !titles || titles.includes(row.project)) ?? [];
   const period = !projectTitle && current ? resourcePeriod(current.rows) : null;
   if (projectTitle && !rows.length) return null;
   return <section className="my-6 rounded-lg border border-[var(--border)] bg-white p-6">

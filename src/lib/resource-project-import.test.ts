@@ -4,6 +4,12 @@ import type {ResourceRow} from './resource-import-domain';
 const project=(id:string,title:string):ResourceProject=>({id,title,source_title:title,revision:'0',archived:false,start:null,end:null});
 const row=(name:string):ResourceRow=>({id:name,project:name,date:'',activity:'Atividade',amount:'0',hours:'0',nature:''});
 describe('projetos da carga',()=>{
+ it('preserva o projeto original renomeado sem reativar o cadastro substituído',()=>{
+  const original={...project('original','serviços Alfa'),source_title:'Tributos Alfa'};
+  const replaced={...project('replaced','serviços Alfa - cadastro substituído'),source_title:'serviços Alfa',archived:true};
+  const plan=planResourceProjects([original,replaced],[row('serviços Alfa')],[row('Tributos Alfa')],true);
+  expect(plan.create).toEqual([]);expect(plan.restore).toEqual([]);expect(plan.archive).toEqual([]);
+ });
  it('planeja novos projetos sem alterar o catálogo e reaproveita os IDs da prévia',()=>{
   const projects=[project('A','Projeto A')];const plan=planResourceProjects(projects,[row('Projeto novo')],[],false);
   expect(projects).toHaveLength(1);expect(plan.create).toHaveLength(1);expect(plan.archive).toEqual([]);

@@ -16,7 +16,7 @@ export type CashReview = {
   reason: string; actor: string; createdAt: string;
 };
 export type CashResult = {
-  formulaVersion: "tria-caixa-v1";
+  formulaVersion: "tria-caixa-v1" | "tria-caixa-v2";
   sourceHash: string;
   review: CashReview | null;
   reviewCurrent: boolean;
@@ -33,7 +33,7 @@ export type CashResult = {
 export function costConfirmationLabel(kind: string, value?: CostConfirmation) {
   if (!value || value.status === "nao_informado") return "Situação não informada";
   if (value.status === "revertido") return "Desconsiderado / revertido";
-  return (kind === "Pagamento" ? "Saída de custo confirmada" : "Custo realizado confirmado") + ` · ${value.effectiveOn!.split("-").reverse().join("/")}`;
+  return (kind === "Pagamento" ? "Saída de custo confirmada" : "Custo realizado confirmado") + ` · ${value.effectiveOn ? value.effectiveOn.split("-").reverse().join("/") : 'Data do pagamento não informada'}`;
 }
 const sum = (entries: CashEntry[]) => entries.reduce((total, entry) => total + BigInt(entry.amountCents), 0n);
 export function calculateCash(entries: CashEntry[], review: CashReview | null, sourceHash: string): CashResult {
@@ -61,6 +61,7 @@ export function calculateCash(entries: CashEntry[], review: CashReview | null, s
   if (!refundsComplete) issues.push("Situação do reembolso não informada ou cobertura não conferida.");
   const dates=[...incurred,...paid].map(e=>e.confirmation?.effectiveOn).concat(received.map(e=>e.reimbursement?.receivedOn));
   const invalidCutoff=Boolean(review && dates.some(date=>!date || date>review.cutoffDate));
+  if(dates.some(date=>!date))issues.push('Há pagamento confirmado pelo proprietário sem data informada. Complete a data para fechar o caixa por período.');
   if(invalidCutoff) issues.push("Há confirmação fora da data de corte. Confira novamente.");
   const ready=paymentsComplete && refundsComplete && !invalidCutoff;
   const paidTotal=sum(paid),receivedTotal=sum(received),incurredTotal=sum(incurred);
@@ -70,7 +71,7 @@ export function calculateCash(entries: CashEntry[], review: CashReview | null, s
   else if(incurred.some(c=>sum(paid.filter(e=>e.confirmation?.costEntryId===c.id))>BigInt(c.amountCents))) outstandingIssue="Há pagamento vinculado acima do custo. Confira a relação antes de calcular o restante.";
   const percent=ready && paidTotal>0n ? (receivedTotal*10000n+paidTotal/2n)/paidTotal : null;
   return {
-    formulaVersion:"tria-caixa-v1",sourceHash,review,reviewCurrent,
+    formulaVersion:"tria-caixa-v2",sourceHash,review,reviewCurrent,
     incurredCents:incurred.length || costsComplete ? incurredTotal.toString() : null,
     paidCents:paid.length || paymentsComplete ? paidTotal.toString() : null,
     receivedCents:received.length || refundsComplete ? receivedTotal.toString() : null,
@@ -92,7 +93,7 @@ export function cashResultLabel(result: CashResult) {
 export function cashMetrics(result: CashResult) {
   return [
     {name:"Custo realizado",value:cashMoney(result.incurredCents),explanation:"Custo reconhecido explicitamente; não é dinheiro pago."},
-    {name:"Valor pago",value:cashMoney(result.paidCents),explanation:"Somente saídas de custo confirmadas com data."},
+    {name:"Valor pago",value:cashMoney(result.paidCents),explanation:"Saídas confirmadas, incluindo declarações do proprietário vinculadas às notas fiscais. Datas ausentes impedem o fechamento por período."},
     {name:"Ainda a pagar",value:result.outstandingCents===null ? "Não calculável" : cashMoney(result.outstandingCents),explanation:result.outstandingIssue ?? "Custos realizados menos pagamentos vinculados, com cobertura conferida."},
     {name:"Reembolso recebido",value:cashMoney(result.receivedCents),explanation:"Entrada confirmada ou ausência de recebimento declarada explicitamente."},
     {name:"Reembolso a receber",value:cashMoney(result.pendingCents),explanation:"Reembolso aprovado pendente; não integra recebido nem caixa."},
@@ -105,13 +106,14 @@ export function aggregateCash(results: CashResult[]): CashResult {
   const cutoffs=new Set(results.map(r=>r.review?.cutoffDate));
   const sameCutoff=cutoffs.size===1 && !cutoffs.has(undefined);
   const total=(field: 'incurredCents'|'paidCents'|'receivedCents'|'pendingCents'|'outstandingCents')=>results.length && results.every(r=>r[field]!==null) ? results.reduce((s,r)=>s+BigInt(r[field]!),0n).toString() : null;
-  const paid=total('paidCents'),received=total('receivedCents');
+  const knownTotal=(field:'incurredCents'|'paidCents'|'receivedCents'|'pendingCents')=>results.some(r=>r[field]!==null) ? results.reduce((s,r)=>s+BigInt(r[field]??'0'),0n).toString() : null;
+  const paid=knownTotal('paidCents'),received=knownTotal('receivedCents');
   const ready=complete && sameCutoff;
   const percent=ready && paid!==null && BigInt(paid)>0n && received!==null ? (BigInt(received)*10000n+BigInt(paid)/2n)/BigInt(paid) : null;
-  return {formulaVersion:"tria-caixa-v1",sourceHash:"portfolio",review:null,reviewCurrent:ready,
-    incurredCents:sameCutoff ? total('incurredCents') : null,paidCents:sameCutoff ? paid : null,receivedCents:sameCutoff ? received : null,pendingCents:sameCutoff ? total('pendingCents') : null,outstandingCents:sameCutoff ? total('outstandingCents') : null,
+  return {formulaVersion:"tria-caixa-v2",sourceHash:"portfolio",review:null,reviewCurrent:ready,
+    incurredCents:knownTotal('incurredCents'),paidCents:paid,receivedCents:received,pendingCents:knownTotal('pendingCents'),outstandingCents:sameCutoff ? total('outstandingCents') : null,
     resultCents:ready ? results.reduce((sum,r)=>sum+BigInt(r.resultCents!),0n).toString() : null,
     coveragePercent:percent===null ? null : `${percent/100n},${(percent%100n).toString().padStart(2,"0")}%`,
-    issues:ready ? [] : [`${results.filter(r=>r.resultCents!==null).length} de ${results.length} projetos ativos com caixa conferido. O total exige todos conferidos na mesma data de corte.`],
+    issues:ready ? [] : [`${results.filter(r=>r.resultCents!==null).length} de ${results.length} recortes com caixa conferido. O resultado exige todos conferidos na mesma data de corte. Os valores exibidos são totais conhecidos e podem ser parciais.`],
     outstandingIssue:results.every(r=>r.outstandingCents!==null) && sameCutoff ? null : "Há projetos sem conciliação completa dos custos e pagamentos."};
 }

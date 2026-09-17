@@ -3,6 +3,7 @@ import {renderToStaticMarkup} from 'react-dom/server';
 import {ResourceSummary} from './resource-summary';
 const data=vi.hoisted(()=>({rows:[{id:'A1',project:'Origem A',activity:'Atividade A',date:'2024-05-01',executor:'Ana',amount:'10',hours:'2',nature:''},{id:'B1',project:'Origem B',activity:'Outra atividade',date:'',executor:'',amount:'20',hours:'0',nature:''}]}));
 vi.mock('@/lib/database',()=>({isDatabaseConfigured:()=>true}));
+vi.mock('@/lib/resource-project-import',()=>({resourceProjectCatalog:async()=>[{id:'BMP-001',title:'Nome atual',source_title:'Origem A'},{id:'BMP-002',title:'Outro projeto',source_title:'Origem B'}]}));
 vi.mock('@/lib/resource-import',()=>({currentResources:async()=>({id:'11111111-1111-4111-8111-111111111111',rows:data.rows,appliedAt:'2026-09-11T12:00:00Z',sheet:'Base'})}));
 vi.mock('@/lib/workspace',()=>({formatBrlFromCents:(s:string)=>`BRL ${s}`}));
 beforeEach(()=>vi.clearAllMocks());

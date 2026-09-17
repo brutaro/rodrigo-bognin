@@ -119,7 +119,7 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
         LEFT JOIN current_reimbursement_status r ON r.entry_id=m.id
         WHERE m.project_id=${projectId} ORDER BY m.created_at,m.id LIMIT ${REPORT_QUERY_LIMIT}`;
       enforceReportRows([activities, hours, evidence, activityHistory, fiscalHistory, projectLabels, financialDocuments]);
-      const [resource] = await tx`SELECT sum((r->>'amount')::numeric)::text amount FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id CROSS JOIN LATERAL jsonb_array_elements(i.rows) r WHERE r->>'project'=(SELECT coalesce(nullif(resource_source_title,''),title) FROM project WHERE id=${projectId})`;
+      const [resource] = await tx`SELECT sum((r->>'amount')::numeric)::text amount FROM resource_import_current c JOIN resource_import i ON i.id=c.import_id CROSS JOIN LATERAL jsonb_array_elements(i.rows) r WHERE resource_project_id(r->>'project')=${projectId}`;
       return { project, activities, hours, financial, evidence, activityHistory, fiscalHistory, projectLabels, resource, financialDocuments, cashProject };
     });
     const draft = {
@@ -130,7 +130,7 @@ export async function readProjectReport(projectId: string): Promise<ProjectRepor
         sourceHours: formatDuration(row.source_duration_seconds), effectiveHours: formatDuration(row.effective_duration_seconds),
         sourceMeasurement: formatBrlDecimal(row.source_measured_value), effectiveMeasurement: formatBrlDecimal(row.effective_measured_value),
         revision: row.adjustment_revision, provenance: provenance(row) })),
-      financialDocuments: data.financialDocuments.map(row=>({kind:row.kind,description:assertReportCell(row.description)+(data.cashProject.entries.find(e=>e.id===row.id)?.confirmation ? ` · ${costConfirmationLabel(row.kind,data.cashProject.entries.find(e=>e.id===row.id)?.confirmation)}` : "")+(row.kind === "Reembolso" ? ` · ${reimbursementLabel(row.reimbursement ?? undefined)}` : ""),amount:formatCents(row.amount),document:row.title ? `${assertReportCell(row.title)} · V${row.version}` : "Sem arquivo associado"})),
+      financialDocuments: [...data.financialDocuments.map(row=>({kind:row.kind,description:assertReportCell(row.description)+(data.cashProject.entries.find(e=>e.id===row.id)?.confirmation ? ` · ${costConfirmationLabel(row.kind,data.cashProject.entries.find(e=>e.id===row.id)?.confirmation)}` : "")+(row.kind === "Reembolso" ? ` · ${reimbursementLabel(row.reimbursement ?? undefined)}` : ""),amount:formatCents(row.amount),document:row.title ? `${assertReportCell(row.title)} · V${row.version}` : "Sem arquivo associado"})), ...data.cashProject.entries.filter(entry=>entry.fiscalNoteId).map(entry=>({kind:entry.kind,description:assertReportCell(entry.description)+" · "+costConfirmationLabel(entry.kind,entry.confirmation),amount:formatCents(entry.amountCents),document:"Declaração do proprietário vinculada à nota fiscal "+entry.fiscalNoteId}))],
       hoursByBm: data.hours.map((row) => ({ label: row.bm_code, value: numberFromSeconds(row.seconds), displayValue: formatDuration(row.seconds) })),
       financialUniverses: [
         ...(data.cashProject.contract?contractMetrics(data.cashProject.contract).map(item=>({...item,explanation:"Contrato declarado: contratado menos recebimentos ativos. Referência: "+assertReportCell(data.cashProject.contract!.reference)})):[]),

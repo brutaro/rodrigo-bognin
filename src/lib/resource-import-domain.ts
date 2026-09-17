@@ -91,8 +91,8 @@ export function resolveResourceRows(current: ResourceRow[], next: ResourceRow[],
 }
 
 // IDs da base são globais. Um envio por projeto não pode reassociar outro projeto.
-export function mergeProjectResources(current: ResourceRow[], incoming: ResourceRow[], projectTitle: string) {
-  const others = current.filter(row => row.project !== projectTitle);
+export function mergeProjectResources(current: ResourceRow[], incoming: ResourceRow[], projectTitle: string, ownedTitles: readonly string[] = [projectTitle]) {
+  const others = current.filter(row => !ownedTitles.includes(row.project));
   const ids = new Set(others.map(row => row.id));
   if (incoming.some(row => row.project !== projectTitle)) throw new Error("A prévia contém outro projeto.");
   const collision = incoming.find(row => ids.has(row.id));

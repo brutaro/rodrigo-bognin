@@ -1,4 +1,5 @@
 import { decimal, normalizeHeader } from "./resource-import-domain";
+import {matchingResourceProjects} from './resource-project-resolution';
 export const fiscalFields = [
  {key:"sourceId",label:"ID da nota",aliases:["id nfs-e","id da nota","id"]},
  {key:"number",label:"Número da NFS-e",aliases:["nfs-e","numero","número da nfs-e"]},
@@ -31,7 +32,7 @@ export function validateFiscalRows(rows:string[][],mapping:Record<string,number>
    const value=decimal(get("amount"));if(value.startsWith("-")||!/^\d+(\.\d{1,2})?$/.test(value))throw Error("valor deve ser positivo ou zero, com até duas casas decimais");
    const [integer,fraction=""]=value.split(".");const amount=`${BigInt(integer)}.${fraction.padEnd(2,"0")}`;
    const project=get("project"),category=get("category")||null;if((category?.length??0)>200||project.length>300)throw Error("categoria ou projeto muito longo");
-   const matches=projects.filter(item=>normalize(item.title)===normalize(project)||(item.sourceTitle&&normalize(item.sourceTitle)===normalize(project)));
+   const matches=matchingResourceProjects(projects.map(item=>({id:item.id,title:normalize(item.title),source_title:normalize(item.sourceTitle||item.title)})),normalize(project));
    if(project&&matches.length!==1)throw Error(`projeto não identificado: ${project}. Cadastre ou corrija o nome antes de importar`);
    valid.push({sourceId,number,date,year,amount,category,projectId:project?matches[0].id:null,project});
   }catch(error){errors.push(`Linha ${locators?.[index]?.replace(/^row:/, "") ?? index+2}: ${error instanceof Error?error.message:"inválida"}.`);}
