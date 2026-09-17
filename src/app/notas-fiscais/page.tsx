@@ -18,7 +18,8 @@ export default async function FiscalNotesPage({searchParams}:{searchParams:Promi
   return <AppShell><main className="mx-auto max-w-7xl px-5 py-8 lg:px-8 lg:py-10">
     <p className="text-sm font-bold uppercase tracking-[0.18em] text-[var(--brand)]">Universo fiscal bruto</p>
     <h1 className="mt-2 text-3xl font-bold text-[var(--ink)]">Notas fiscais</h1>
-    <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--ink-muted)]">{selected ? `${notes.length} de ${rows.length} registros` : `${notes.length} registros`}. O declarado e o candidato auditado são campos distintos. Uma NFS-e não comprova pagamento.</p>
+    <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--ink-muted)]">{selected ? `${notes.length} de ${rows.length} registros` : `${notes.length} registros`}. O declarado e o candidato auditado são campos distintos. Registre a confirmação do proprietário para relacionar a nota à saída no caixa.</p>
+    <Link href="/caixa/notas-fiscais" className="mt-3 inline-block font-semibold text-[var(--brand)] underline">Conferir pagamentos das notas fiscais</Link>
     <Link href="/fontes/notas-fiscais" className="my-5 inline-block rounded-lg bg-[var(--brand)] px-4 py-3 text-sm font-semibold text-white">Importar planilha de notas</Link>
     <Link href="/fontes/notas-fiscais/pdf" className="ml-4 text-sm text-[var(--brand)] underline">Cadastrar a partir de PDF</Link>
     <Link href="/fontes/notas-fiscais/xml" className="ml-4 text-sm text-[var(--brand)] underline">Cadastrar a partir de XML</Link>
