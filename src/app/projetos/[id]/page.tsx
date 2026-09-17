@@ -1,5 +1,7 @@
 import { ownerDisplay } from "@/lib/owner-display";
 import { currentResources } from "@/lib/resource-import";
+import {resourceProjectCatalog} from '@/lib/resource-project-import';
+import {resourceProjectTitles} from '@/lib/resource-project-resolution';
 import { projectExecutors } from "@/lib/resource-import-domain";
 import {ContractEditor} from "@/components/contract-editor";
 import {ContractSummary} from "@/components/contract-summary";
@@ -51,7 +53,9 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
   const localData = isDatabaseConfigured();
   const project = await getProjectDetails(id);
   if (!project) notFound();
-  const executors = localData ? projectExecutors((await currentResources())?.rows ?? [], project.sourceName ?? project.name) : [];
+  const titles = localData ? resourceProjectTitles(await resourceProjectCatalog(),project.id) : [];
+  const executorRows = localData ? ((await currentResources())?.rows ?? []).filter(row=>titles.includes(row.project)).map(row=>({...row,project:project.name})) : [];
+  const executors = projectExecutors(executorRows,project.name);
   const query = await searchParams;
   const notice = typeof query.notice === "string" ? query.notice : undefined;
   const draft = await readProjectDraft(project.id);
@@ -152,9 +156,10 @@ export default async function ProjectPage({ params, searchParams }: PageProps<"/
                       <div><p className="text-xs font-bold uppercase tracking-wide text-blue-800">{entry.kind}</p><h3 className="mt-1 font-semibold text-[var(--ink)]">{entry.description}</h3><p className="mt-1 text-xs text-slate-500">{ownerDisplay(entry.origin)} · {entry.documentState}</p></div>
                       <p className="text-lg font-bold text-[var(--ink)]">{formatBrlFromCents(entry.amountCents)}</p>
                     </div>
-                    {localData && ["Custo ou valor do projeto","Pagamento"].includes(entry.kind) && <CostConfirmationEditor key={`${entry.id}-cost-${entry.confirmation?.revision ?? "0"}`} projectId={project.id} entryId={entry.id} kind={entry.kind} value={entry.confirmation} costs={draft.manualFinancialEntries.filter(e=>e.kind==="Custo ou valor do projeto" && e.confirmation?.status==="confirmado").map(e=>({id:e.id,description:e.description,amountCents:e.amountCents}))} />}
+                    {entry.fiscalNoteId && <p className="mt-3 text-sm"><Link className="underline text-[var(--brand)]" href={`/notas-fiscais?nota=${encodeURIComponent(entry.fiscalNoteId)}`}>Ver nota e origem</Link><Link className="ml-4 underline text-[var(--brand)]" href="/caixa/notas-fiscais">Conferir declaração de pagamento e data</Link></p>}
+                    {localData && !entry.fiscalNoteId && ["Custo ou valor do projeto","Pagamento"].includes(entry.kind) && <CostConfirmationEditor key={`${entry.id}-cost-${entry.confirmation?.revision ?? "0"}`} projectId={project.id} entryId={entry.id} kind={entry.kind} value={entry.confirmation} costs={draft.manualFinancialEntries.filter(e=>e.kind==="Custo ou valor do projeto" && e.confirmation?.status==="confirmado").map(e=>({id:e.id,description:e.description,amountCents:e.amountCents}))} />}
                     {localData && entry.kind === "Reembolso" && <ReimbursementEditor key={`${entry.id}-reembolso-${entry.reimbursement?.revision ?? "0"}`} projectId={project.id} entryId={entry.id} value={entry.reimbursement} />}
-                    {localData ? <FinancialProof key={`${entry.id}-${entry.proofVersionId ?? "none"}`} projectId={project.id} entryId={entry.id} versionId={entry.proofVersionId} files={proofFiles} /> : null}
+                    {localData && !entry.fiscalNoteId ? <FinancialProof key={`${entry.id}-${entry.proofVersionId ?? "none"}`} projectId={project.id} entryId={entry.id} versionId={entry.proofVersionId} files={proofFiles} /> : null}
                   </article>
                 ))}
                 {!project.financialReferences.length && !draft.manualFinancialEntries.length ? <p className="p-5 text-sm text-[var(--ink-muted)]">Nenhum valor registrado.</p> : null}
