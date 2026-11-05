@@ -205,3 +205,49 @@ Nenhum volume anônimo anterior sem atribuição comprovada foi removido.
 
 - Tipos do projeto deixam de receber definições ambientais externas.
   [tsconfig.json:8](../tsconfig.json#L8)
+
+### Correções de portabilidade do CI do PR 11 — 2026-11-05
+
+O CI de `b889f83` revelou duas causas nas fixtures, sem falha de aplicação:
+
+- O teste de instabilidade pressupunha a ordem de `opendir`. Em ext4, o
+  diretório podia vir primeiro e disparar a mutação antes da leitura do arquivo.
+  A fixture agora controla explicitamente as duas ordens pelo mock e coordena a
+  escrita somente depois do fechamento da leitura do alvo. Os asserts conferem
+  a ordem exercitada, a escrita efetiva, a preservação de dev/inode, a alteração
+  de tamanho/conteúdo e a rejeição real na revalidação final. O verificador não
+  foi alterado.
+- A fixture de 1.000 revisões excedeu 20 segundos no runner Ubuntu de duas CPUs.
+  Seu prazo individual passou a 60 segundos; continuam 1.000 revisões e todos os
+  asserts de `leafLookups`, `leafIndexUpdates` e `previewRootScans`. A prova de
+  custo usa esses contadores determinísticos, sem benchmark de walltime ou
+  alteração do timeout global.
+
+Os dois arquivos passaram localmente (57 testes) e em Linux real com Node 22,
+Vitest 4.1.12, rede desabilitada e limite de duas CPUs (57 testes em 18 segundos;
+fixture de 1.000 revisões em 13,3 segundos). Log sintético:
+`/private/tmp/tria-pr11-ci-tests-linux.log`. Foi usada uma imagem tools temporária
+com tag própria, removida depois da validação; a tag `tria-local-tools:current`
+e os volumes existentes permaneceram intactos. O rerun remoto pertence ao
+responsável principal; estas provas locais/Linux não o substituem.
+
+O check final também expôs um limite de tempo incidental na fixture de
+ownership/cleanup: sob carga, seus subprocessos Docker fake terminaram em
+5.029 ms, 29 ms acima do prazo padrão. Com aprovação do responsável principal,
+somente essa fixture passou a ter 15 segundos. Todos os asserts de ownership e
+pós-condições continuam intactos, assim como os deadlines do supervisor e o
+timeout global. O alvo isolado passou em aproximadamente 3,2 segundos antes do
+ajuste; a ampliação trata contenção de execução, sem substituir provas por
+contadores ou remover expectativas.
+
+Comprovação final desta correção: `npm run check` integral aprovado com 58
+arquivos/516 testes, lint sem warnings e build Next/TypeScript verde.
+`security:audit` completo/produção permaneceu em zero; `origin:verify`,
+`railway:check`, `release:scan` e `git diff --check` aprovados. O alvo isolado
+ownership/cleanup passou após o prazo individual de 15 segundos. A aplicação,
+o domínio, a persistência, o verificador e o timeout global não foram alterados.
+O arquivo `src/components/project-list.tsx` permanece byte a byte igual a HEAD,
+SHA-256 `0b472b5d0cfd4e7a463397a3bc76f1e6c81079defb4ef758f6f5de438430a739`;
+o manifesto histórico mantém seu SHA-256 ancorado. Nenhum commit/push foi feito
+pela implementação; publicação e acompanhamento do rerun remoto ficam com o
+responsável principal, sem merge.

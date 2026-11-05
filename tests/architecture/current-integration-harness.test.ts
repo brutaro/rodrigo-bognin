@@ -187,6 +187,8 @@ describe("isolamento do runner vigente", () => {
     } finally { rmSync(temporary, { recursive: true, force: true }); }
   });
 
+  // A prova é por ownership e pós-condições; inicialização dos subprocessos
+  // pode ultrapassar 5s sob carga, sem representar prazo funcional do supervisor.
   it("estabelece ownership antes do cleanup e remove somente recursos rotulados", () => {
     const temporary = mkdtempSync(join(tmpdir(), "story33-cleanup-"));
     try {
@@ -201,7 +203,7 @@ describe("isolamento do runner vigente", () => {
       expect(calls).toContain("network inspect -f");
       expect(calls).toContain("label=com.tria.integration.namespace=tria-adjustments-harness-self-test-spy");
     } finally { rmSync(temporary, { recursive: true, force: true }); }
-  });
+  }, 15_000);
 
   it("não limpa preexistente e torna falha de cleanup não zero", () => {
     const preexistingTemp = mkdtempSync(join(tmpdir(), "story33-preexisting-"));

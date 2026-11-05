@@ -1,27 +1,50 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { type Dirent, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-const hooks = vi.hoisted(() => ({ swap: "", mutateDirectory: "", earlierFile: "" }));
+const hooks = vi.hoisted(() => ({
+  swap: "", mutationTrigger: "", earlierFile: "", orderedRoot: "",
+  rootOrder: [] as string[], enumerated: [] as string[], completedReads: [] as string[], mutationApplied: false,
+}));
 vi.mock("node:fs/promises", async (original) => {
   const fs = await original<typeof import("node:fs/promises")>();
   return {
     ...fs,
     open: async (...args: Parameters<typeof fs.open>) => {
-      if (String(args[0]) === hooks.swap) { hooks.swap = ""; rmSync(args[0]); execFileSync("mkfifo", [String(args[0])]); }
-      return fs.open(...args);
+      const file = String(args[0]);
+      if (file === hooks.swap) { hooks.swap = ""; rmSync(args[0]); execFileSync("mkfifo", [file]); }
+      if (file === hooks.mutationTrigger) {
+        if (!hooks.completedReads.includes(hooks.earlierFile)) throw new Error("Fixture tentou mutar antes da leitura concluída");
+        hooks.mutationTrigger = "";
+        writeFileSync(hooks.earlierFile, "changed after the earlier file was read");
+        hooks.mutationApplied = true;
+      }
+      const handle = await fs.open(...args);
+      if (file === hooks.earlierFile) {
+        const close = handle.close.bind(handle);
+        handle.close = async () => { await close(); hooks.completedReads.push(file); };
+      }
+      return handle;
     },
     opendir: async (...args: Parameters<typeof fs.opendir>) => {
-      if (String(args[0]) === hooks.mutateDirectory) { hooks.mutateDirectory = ""; writeFileSync(hooks.earlierFile, "changed after the earlier file was read"); }
-      return fs.opendir(...args);
+      const directory = await fs.opendir(...args);
+      if (String(args[0]) === hooks.orderedRoot) {
+        const entries: Dirent[] = [];
+        for await (const entry of directory) entries.push(entry);
+        entries.sort((left, right) => hooks.rootOrder.indexOf(left.name) - hooks.rootOrder.indexOf(right.name));
+        Object.defineProperty(directory, Symbol.asyncIterator, { value: async function* () {
+          for (const entry of entries) { hooks.enumerated.push(entry.name); yield entry; }
+        } });
+      }
+      return directory;
     },
   };
 });
 import { captureTree, publishCapturePair, regularFileBytes } from "../../scripts/lib/protected-origin.mjs";
 const temporary: string[] = [];
 function directory() { const dir = realpathSync(mkdtempSync(join(tmpdir(), "tria-origin-race-"))); temporary.push(dir); return dir; }
-afterEach(() => { hooks.swap = ""; hooks.mutateDirectory = ""; hooks.earlierFile = ""; for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+afterEach(() => { hooks.swap = ""; hooks.mutationTrigger = ""; hooks.earlierFile = ""; hooks.orderedRoot = ""; hooks.rootOrder = []; hooks.enumerated = []; hooks.completedReads = []; hooks.mutationApplied = false; for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 describe("instabilidade ordinária e publicação da captura", () => {
   it("recusa troca regular→FIFO entre lstat e open sem bloquear", async () => {
     const dir = directory(), file = join(dir, "synthetic.txt"); writeFileSync(file, "synthetic"); hooks.swap = file;
@@ -29,11 +52,24 @@ describe("instabilidade ordinária e publicação da captura", () => {
     await expect(regularFileBytes(file)).rejects.toThrow("Arquivo mudou");
     expect(Date.now() - started).toBeLessThan(1000);
   });
-  it("revalida arquivo já lido quando outro diretório é percorrido", async () => {
-    const dir = directory(), file = join(dir, "earlier.txt"), later = join(dir, "later");
-    writeFileSync(file, "synthetic first contents"); mkdirSync(later); writeFileSync(join(later, "last.txt"), "synthetic last contents");
-    hooks.earlierFile = file; hooks.mutateDirectory = later;
-    await expect(captureTree(dir)).rejects.toThrow("Árvore mudou");
+  it.each(["file-first", "directory-first"])("revalida arquivo já lido com ordem explícita %s", async (order) => {
+    const dir = directory(), file = join(dir, "earlier.txt"), later = join(dir, "later"), nested = join(later, "last.txt");
+    writeFileSync(file, "synthetic first contents"); mkdirSync(later); writeFileSync(nested, "synthetic last contents");
+    const target = order === "file-first" ? file : nested;
+    const before = lstatSync(target), originalContents = readFileSync(target, "utf8");
+    hooks.orderedRoot = dir;
+    hooks.rootOrder = order === "file-first" ? ["earlier.txt", "later"] : ["later", "earlier.txt"];
+    hooks.earlierFile = target;
+    hooks.mutationTrigger = order === "file-first" ? nested : file;
+    await expect(captureTree(dir)).rejects.toThrow(`Árvore mudou durante varredura: ${target}`);
+    expect(hooks.enumerated).toEqual(hooks.rootOrder);
+    expect(hooks.completedReads).toContain(target);
+    expect(hooks.mutationApplied).toBe(true);
+    const after = lstatSync(target);
+    expect([after.dev, after.ino]).toEqual([before.dev, before.ino]);
+    expect(after.size).not.toBe(before.size);
+    expect(readFileSync(target, "utf8")).toBe("changed after the earlier file was read");
+    expect(readFileSync(target, "utf8")).not.toBe(originalContents);
   });
   it("rollback da segunda publicação preserva documento preexistente", async () => {
     const dir = directory(), first = join(dir, "stage-first"), second = join(dir, "stage-second"), target = join(dir, "manifest"), report = join(dir, "report");

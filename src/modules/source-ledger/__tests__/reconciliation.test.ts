@@ -810,6 +810,8 @@ describe("reconciliação — identidade, precedência e ausência", () => {
     expect(repository.diagnostics.applySourceEventLookups).toBe(count);
   });
 
+  // O custo é provado pelos contadores determinísticos, não por walltime.
+  // Só esta fixture de 1.000 revisões recebe margem para o CI compartilhado de 2 CPUs.
   it("mantém leaf O(1) por índice em 1.000 revisões e escolhe a maior base por preview", async () => {
     const p = preview([row("indexed-leaf", "1")]);
     const root = reconcileConfirmedPreview({ confirmation: confirmation(p), preview: p, policy, records: [], baseProjectionVersion: "0", reconciliationId: "indexed-root" });
@@ -829,7 +831,7 @@ describe("reconciliação — identidade, precedência e ausência", () => {
     await repository.saveReconciliation({ reconciliation: newerBase, fingerprint: newerBase.fingerprint, idempotencyKey: "indexed-newer-base-key" });
     await expect(repository.findReconciliationByPreview(p.previewId)).resolves.toMatchObject({ reconciliation: { id: newerBase.id, baseProjectionVersion: "5" } });
     expect(repository.diagnostics.previewRootScans).toBe(2);
-  }, 20_000);
+  }, 60_000);
 
   it("converge retry concorrente e tipa divergência com a leaf atual", async () => {
     const previous = { upload: process.env.TRIA_CONSOLIDATED_SOURCE_UPLOAD, isolated: process.env.TRIA_INTEGRATION_ISOLATED, namespace: process.env.TRIA_INTEGRATION_NAMESPACE };
