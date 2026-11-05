@@ -1,0 +1,409 @@
+{
+  "captured_at": "2026-11-05T13:57:38.257Z",
+  "historical_manifest_sha256": "b9b2979be4e5174dc1b1a49f55377db0e32e9e4d320c7b94c6bee98648f35bfa",
+  "scope": "Diferenças anteriores à captura atual; não atribuídas ao PR. Não prova identidade contínua desde agosto.",
+  "roots": {
+    "_bmad": {
+      "added": [
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/compile-epic-context.md",
+          "size": 2992,
+          "sha256": "64d13b41974cfa0dfc1de64b6fbd8365e9b99f91c7c98f0ee1a9fbd018f324ca"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/manifest.json",
+          "size": 5910,
+          "sha256": "8a5b33004cc049663c12345571b4c7aed3fbe041c82df71700bffef2fd85331d"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/references/deletion-check.md",
+          "size": 1009,
+          "sha256": "0f1f124e4e957147e89164a272b10bedc694ad0d9ad2618c8610ac74ee9cb0da"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/review-prompts/edge-case-hunter.md",
+          "size": 5708,
+          "sha256": "4ccb3599ed1b8cc54876b304dc567d1b4e3e0ec5c1add34df9a2445224ac77af"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/review-prompts/verification-gap.md",
+          "size": 9268,
+          "sha256": "11b6bbbd4e3426a25cca81229c98971e5f20ce99638940c47c9c1484011b457a"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/spec-template.md",
+          "size": 4212,
+          "sha256": "5fccfa92dd632d4be646ab40f2882452189aba49db57fe3fa00fcc1806666d74"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/step-01-clarify-and-route.md",
+          "size": 11893,
+          "sha256": "57aeabc213ab96ac745533145f5494a5327b99a8891f0c000a50ce3ff896ccbf"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/step-02-plan.md",
+          "size": 3618,
+          "sha256": "977109de3574ff59a23b9dc3600bc662eb184aa29bcfe6b16eae51db82dc222d"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/step-03-implement.md",
+          "size": 3665,
+          "sha256": "9b028049f920fb5468564ddc26b36d92086e78ef14bf95bfbab2ceee72a683fa"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/step-04-review.md",
+          "size": 11909,
+          "sha256": "c7b4fbe3c48a25b907b72ce099182bcbe849b57ccb8b0717ec4a3d442267ea98"
+        },
+        {
+          "path": "render/bmad-build-auto/rodrigo-bognin-725830fbac1e/96b5ee9c7374f21b4719/workflow.md",
+          "size": 5784,
+          "sha256": "743c387c279adbbd30e4430633ab988f3ee533bbc46c67ba7cf45bf75b5be137"
+        }
+      ],
+      "changed": [],
+      "removed": []
+    },
+    "_bmad-output": {
+      "added": [
+        {
+          "path": "implementation-artifacts/deferred-work.md",
+          "size": 3036,
+          "sha256": "092b7fd686570f1b3091c4e414539775691a8f85824357fcd2a10b5eb34d341d"
+        },
+        {
+          "path": "implementation-artifacts/epic-3-context.md",
+          "size": 5501,
+          "sha256": "64ec5075fd98b08fd6be5d8a968d2438897c92416c209791ba4a6115a55aa1bf"
+        },
+        {
+          "path": "implementation-artifacts/spec-3-1-receber-e-proteger-o-arquivo-fonte-consolidado.md",
+          "size": 8712,
+          "sha256": "8edc6b352a0d5cb4da1fd2db58bf7098147690f67c53d85a008e618bb1a82d25"
+        },
+        {
+          "path": "implementation-artifacts/spec-3-2-selecionar-mapear-validar-preparar-previa.md",
+          "size": 36756,
+          "sha256": "2ad3102ffff2d2f13508455aa3c6fbf0ec0a58623c7124c63c87de9b084993c1"
+        },
+        {
+          "path": "implementation-artifacts/spec-3-3-reconciliar-aplicar-observacoes-recorrentes.md",
+          "size": 48887,
+          "sha256": "4dc64d562a4bd36855f3f57c4a0e86ac3dd0af8349151e52dd0232113ef99541"
+        },
+        {
+          "path": "implementation-artifacts/spec-sugestoes-fiscais-pdf.md",
+          "size": 8221,
+          "sha256": "a20af5b77643ada31fe38c7fc56895b912e36381bc1c52dcb6087abea3865b44"
+        },
+        {
+          "path": "implementation-artifacts/sprint-status.yaml",
+          "size": 5637,
+          "sha256": "cdaa4466aabb45b0c6eaf64df8309a4860b6aaa15d40c43f58e1de486374ce33"
+        },
+        {
+          "path": "implementation-artifacts/story-3-1-protected-files.sha256",
+          "size": 293,
+          "sha256": "02f8e575f435487bb8b18b4b172421d6757de9e74b8c7f40c934fe663a21c8dc"
+        },
+        {
+          "path": "implementation-artifacts/story-3-2-orchestration-log.md",
+          "size": 23643,
+          "sha256": "674afa2a4941f0c3eea70e59f2676371a5e9787091edbd45d3b4f20720f05612"
+        },
+        {
+          "path": "implementation-artifacts/story-3-3-baseline-manifest.md",
+          "size": 3832,
+          "sha256": "d4b886585d9aaf1e7a3a6155cb2dc16b6c1de759a433c6486b118169c3b6ded2"
+        },
+        {
+          "path": "implementation-artifacts/story-3-3-baseline.patch",
+          "size": 11779,
+          "sha256": "b89567f5b2a56c424596b9608a1ba240a9af88ff1957e25378612fa407f861aa"
+        },
+        {
+          "path": "implementation-artifacts/story-3-3-orchestration-log.md",
+          "size": 9473,
+          "sha256": "a2018485204394d8a1d502db20c0c3c1cfaf60325b397e6e18836d492adddef6"
+        },
+        {
+          "path": "implementation-artifacts/story-3-3-resume-checkpoint.md",
+          "size": 3531,
+          "sha256": "f044a8d137304533dd1a4f508d67e63c7ed62a23cadf0fd6512be2534453aa7a"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/00-registro-novos-requisitos.md",
+          "size": 20636,
+          "sha256": "bb0153fc10472948388f597bbb0248715044cf9dde077ab0db683307faea303c"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/01-registro-conflitos-decisoes.md",
+          "size": 16581,
+          "sha256": "c1204ff7344d4063eddead5cd85b549bae4c7cc4cd926a2f97787fb86b1153ac"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/02-mapa-impacto-rastreabilidade.md",
+          "size": 12103,
+          "sha256": "6e00cba0a411e9bf551bfb35c13eaab6df958cefade29b51b0df4b5e79c93567"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/03-plano-importacao-recorrente-e-preservacao.md",
+          "size": 16294,
+          "sha256": "8bd11261eb91c122de529fbb5af6d2961d7c4f1ae423f5b2b2fa201b96ef9d89"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/04-propostas-de-stories.md",
+          "size": 11890,
+          "sha256": "a558e47010432ec25d5ee2356f49cd6098c868f66cc9469789640169d8f1dbb9"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/05-decisoes-pendentes.md",
+          "size": 14071,
+          "sha256": "c998fe8eb708ae7a6199d5087cf307f2433c6a17c9dbce24131a0316fee66bdb"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/06-consolidacao-plano-provas-readiness.md",
+          "size": 15857,
+          "sha256": "0004e6f00789a2ef11b43da015b4a53d9b6dc5abe472a994b4adfd5fe5e079d6"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/07-matriz-rastreabilidade-coordenadora.md",
+          "size": 10730,
+          "sha256": "14c077c703fc013f8cc21fee15448e96e77c7f9ee86521b32652b1638ecfe737"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/08-dossie-decisao-gate-1.md",
+          "size": 11943,
+          "sha256": "5b4a6b5bd62c6cd99f68130f6782c4338e8c8b87dcb43031023f76d055bfb15c"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/09-dossie-decisoes-gates-2-3.md",
+          "size": 9108,
+          "sha256": "ee8a04432dab516de2a1a7dc7d45929d750ac6f1277e941659b76f07227fd2db"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/10-dossie-decisoes-gates-4-5.md",
+          "size": 13353,
+          "sha256": "ce8c1431a527babe0d5d1041964505ea90611f4aceda4c1a28c201765fa4562b"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/11-dossie-decisoes-gates-6-8.md",
+          "size": 10957,
+          "sha256": "c36ffb431da558f62e3a75b7471c8d6d48f6ab0d7398a0416dcc5c82fa9c18ac"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/12-dossie-decisao-gate-9.md",
+          "size": 7737,
+          "sha256": "46073f0f9c3a571a2654d18a369c4dfebcc956588a16bd848d62197891f57ded"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/13-dossie-decisoes-herdadas-e-aprovacao.md",
+          "size": 4525,
+          "sha256": "554ab7e794690bc5e8a48c94cdc8b3dadb742ee6dcdc4efe7a65373ccafe6f3b"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/14-formulario-unico-decisoes.md",
+          "size": 7094,
+          "sha256": "d35cd13c33c00426d45ecfc8a27f01eee8c37ce9fb1187581d59af1374837830"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/15-auditoria-cobertura-e-estado.md",
+          "size": 8595,
+          "sha256": "a303c6b1ce56ab1848b30da6c4ae59a39c8c894a8ebd367fa8d6c9c75d7c4c28"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/README.md",
+          "size": 5834,
+          "sha256": "b5125e11feece1fcd08f9f12b6bab9528540dd70b29bba6ec38286e663d82f94"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/reviews/01-impacto-arquitetura-dados.md",
+          "size": 41141,
+          "sha256": "3e01049e6a9beb74f760448ae21cc89cc91ac808a91af94a5fdcd71a942d6f86"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/reviews/02-impacto-ux-dashboard.md",
+          "size": 38032,
+          "sha256": "374634fd493785403d846d18a34b7b4e4ba01f5234b8946bc0f9c98d1d433e09"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/reviews/03-impacto-produto-backlog-readiness.md",
+          "size": 36806,
+          "sha256": "f3737a9073a6e12f66f607862ae2a728c3c3acc21b860dded7fdb73a850dcd07"
+        },
+        {
+          "path": "planning-artifacts/correct-course-2026-09-02/reviews/04-impacto-implementacao-codigo.md",
+          "size": 32541,
+          "sha256": "4674c7da05809ae3f43e2400ebf9ea3c2cb964d53c35d19a485171d6a40606bf"
+        },
+        {
+          "path": "planning-artifacts/implementation-readiness-2026-09-02-v3.md",
+          "size": 11585,
+          "sha256": "453abd0ca7efc9337ca58590ede6f4a0ffbfebcac56093b2a77e84d8e0d1a480"
+        },
+        {
+          "path": "planning-artifacts/implementation-readiness-2026-09-02-v4.md",
+          "size": 6182,
+          "sha256": "e7ad8552b6b155c13f3747cda3a543fea39a3210cdb3da0174fa77c71d47ca1a"
+        },
+        {
+          "path": "planning-artifacts/orchestration-plan-story-3-2-2026-09-03.md",
+          "size": 9770,
+          "sha256": "e24579cbad26b5d48b8d4abb60c71d537162fa12537cbb966838ede97d64cedf"
+        },
+        {
+          "path": "planning-artifacts/orchestration-plan-story-3-3-2026-09-03.md",
+          "size": 6080,
+          "sha256": "3dcd7039f774c984919b506065aaf36eed5b32e6a6066f461e64615da1bb2229"
+        },
+        {
+          "path": "planning-artifacts/prompt-orquestrador-bmad-story-3-3-2026-09-03.md",
+          "size": 10729,
+          "sha256": "d5070309f36b8a6c47595196118cc5418a72e3ef977c43ed9a1e2f880e13435c"
+        },
+        {
+          "path": "planning-artifacts/sprint-change-proposal-2026-09-02.md",
+          "size": 14362,
+          "sha256": "c5aa99befec74952113ce83f91cd5a11c34e7c0a9559c1d6ac2c2f69bed58d18"
+        },
+        {
+          "path": "planning-artifacts/sprint-change-proposal-story-3-2-2026-09-02.md",
+          "size": 16011,
+          "sha256": "806eac66af4f1d4647966c7034b825ce59a52236ce105cc8cad57cc533bdb795"
+        },
+        {
+          "path": "planning-artifacts/sprint-change-proposal-story-3-2-recovery-2026-09-03.md",
+          "size": 8293,
+          "sha256": "7f44ab9456b860b321ad4dc8d344991259126a4098a54c9e109d64c067cee33f"
+        },
+        {
+          "path": "specs/spec-story-3-3-reconciliar-aplicar-observacoes-recorrentes/.memlog.md",
+          "size": 2491,
+          "sha256": "e474b94c6dd59408caa1579e5491e14dbd36844371fee3677a64702476461f17"
+        },
+        {
+          "path": "specs/spec-story-3-3-reconciliar-aplicar-observacoes-recorrentes/SPEC.md",
+          "size": 5246,
+          "sha256": "a25488133f3c0fa35e1161a27fbe8ec7e23f46a9f1901ed1739ab4b13dc892e2"
+        },
+        {
+          "path": "specs/spec-story-3-3-reconciliar-aplicar-observacoes-recorrentes/acceptance-and-gates.md",
+          "size": 3640,
+          "sha256": "8b01be3ea9c70183f7b733e31063e8ca9791def0cac70d822b6d0cafa27425e2"
+        }
+      ],
+      "changed": [
+        {
+          "path": "planning-artifacts/architecture/architecture-RODRIGO-BOGNIN-2026-08-29/ARCHITECTURE-SPINE.md",
+          "before": {
+            "path": "planning-artifacts/architecture/architecture-RODRIGO-BOGNIN-2026-08-29/ARCHITECTURE-SPINE.md",
+            "size": 33514,
+            "sha256": "11a19ea64b60938beac4fc71ea880714b5c4c11af6b3e24f1f9d9c62bb0c75bb"
+          },
+          "after": {
+            "path": "planning-artifacts/architecture/architecture-RODRIGO-BOGNIN-2026-08-29/ARCHITECTURE-SPINE.md",
+            "size": 40748,
+            "sha256": "61d3e0022f2fd837ab843c0f4a9277ed51836907fce772a075af38c2e64fcbb0"
+          }
+        },
+        {
+          "path": "planning-artifacts/epics.md",
+          "before": {
+            "path": "planning-artifacts/epics.md",
+            "size": 468682,
+            "sha256": "d6ec9ec3025a9283de1eb8c7068a050036c1f1d79758021f65ce3143d7c0a634"
+          },
+          "after": {
+            "path": "planning-artifacts/epics.md",
+            "size": 479193,
+            "sha256": "d88ffef2b22dca861ec4443e20a221d9fdee4a7b556126ef8bccb220287d2c52"
+          }
+        },
+        {
+          "path": "planning-artifacts/prds/prd-RODRIGO-BOGNIN-2026-08-28/addendum.md",
+          "before": {
+            "path": "planning-artifacts/prds/prd-RODRIGO-BOGNIN-2026-08-28/addendum.md",
+            "size": 18225,
+            "sha256": "97ad0a824440093d005f04e2661e03153f79ba246397d79c47047d9a9d63076d"
+          },
+          "after": {
+            "path": "planning-artifacts/prds/prd-RODRIGO-BOGNIN-2026-08-28/addendum.md",
+            "size": 22679,
+            "sha256": "fca690db7ebd5b2e11ec52a28d31aca26d373f6150cd336cd682449b560bcb5f"
+          }
+        },
+        {
+          "path": "planning-artifacts/prds/prd-RODRIGO-BOGNIN-2026-08-28/prd.md",
+          "before": {
+            "path": "planning-artifacts/prds/prd-RODRIGO-BOGNIN-2026-08-28/prd.md",
+            "size": 165231,
+            "sha256": "f8cb89278b0b4b381e56f1103ca0063b6fa94b9423b7cf7531c507bd248a08a0"
+          },
+          "after": {
+            "path": "planning-artifacts/prds/prd-RODRIGO-BOGNIN-2026-08-28/prd.md",
+            "size": 178636,
+            "sha256": "1ad4726006a2350695b4532ce08304ec838dd08ca5b596c4d15877e1ddcec620"
+          }
+        },
+        {
+          "path": "planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/DESIGN.md",
+          "before": {
+            "path": "planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/DESIGN.md",
+            "size": 30936,
+            "sha256": "1a539ab9118b4821a563ff67b585a352a38659c15488bb9c46cb58ab97303cd4"
+          },
+          "after": {
+            "path": "planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/DESIGN.md",
+            "size": 34756,
+            "sha256": "59218bf9ffe145d6f793688a11c31078e6918bfc1ae0ac119e8ed03938cc1c18"
+          }
+        },
+        {
+          "path": "planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/EXPERIENCE.md",
+          "before": {
+            "path": "planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/EXPERIENCE.md",
+            "size": 48613,
+            "sha256": "f5b782ab81ebb42a617276e3ff7a07a8e68bd491ab83f0ef5b9123df8787aaac"
+          },
+          "after": {
+            "path": "planning-artifacts/ux-designs/ux-RODRIGO-BOGNIN-2026-08-28/EXPERIENCE.md",
+            "size": 53866,
+            "sha256": "09ecb2a23ab7e144d7490509517a38d97b4a3144f9134fa561ceb6f5bff070b7"
+          }
+        }
+      ],
+      "removed": []
+    },
+    ".agents": {
+      "added": [],
+      "changed": [],
+      "removed": [
+        {
+          "path": "skills/bmad-retrospective/scripts/__pycache__/sprint_status.cpython-311.pyc",
+          "size": 33069,
+          "sha256": "a1f809abad01386d1342d3a70df401ced7c1de42c94133b65422ad3f2b2f382b"
+        },
+        {
+          "path": "skills/bmad-retrospective/scripts/tests/__pycache__/test_git_evidence.cpython-311-pytest-9.1.1.pyc",
+          "size": 104958,
+          "sha256": "bd1ab9d967e7e77c9a734640a64e5c0282e6ce4a53a6b0956cc54f4cefd25770"
+        },
+        {
+          "path": "skills/bmad-retrospective/scripts/tests/__pycache__/test_sprint_status.cpython-311-pytest-9.1.1.pyc",
+          "size": 244935,
+          "sha256": "9f3cb3413808cd73dbdd619051b624482d7b5ce1359d2d549310e7b5434c0c55"
+        },
+        {
+          "path": "skills/bmad-sprint-planning/scripts/__pycache__/sprint_plan.cpython-311.pyc",
+          "size": 41568,
+          "sha256": "c92c8bd560b76b970c88ec2e3b18c6611f423ca91ffe6f741348ea94e04da61d"
+        },
+        {
+          "path": "skills/bmad-sprint-planning/scripts/tests/__pycache__/test_sprint_plan.cpython-311-pytest-9.1.1.pyc",
+          "size": 98027,
+          "sha256": "640ded70adc12c995a3b92680a44ad9b679ca80bce6b0ae03f70e17a19aa5ae8"
+        }
+      ]
+    }
+  }
+}

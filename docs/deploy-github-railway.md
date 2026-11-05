@@ -8,6 +8,7 @@ Pare somente para login, 2FA ou confirmação interativa. Não apague recursos, 
 
 ```bash
 npm ci
+npm run security:audit
 npm run release:scan
 npm run origin:verify
 npm run check
@@ -123,3 +124,94 @@ A primeira release com imports completos, bootstrap desligado, secrets admin/imp
 ## 9. Operação
 
 Mantenha uma réplica, `overlapSeconds: 0`, alertas de custo Hobby, plan antes de apply, CI antes de deploy e restores isolados periódicos.
+
+## 10. Integrações vigentes e limites das fotografias históricas
+
+A auditoria completa e de produção falha em qualquer alerta:
+`npm run security:audit`. O override de `minimatch` fica restrito à dependência
+transitiva de `@typescript-eslint/typescript-estree`: a linha 10 ainda possui
+alerta; 11.0.1 elimina o alerta e suporta Node 22. Next e eslint-config-next
+permanecem alinhados na versão 16.4.5. O TypeScript continua em modo `strict`,
+com tipos ambientais restritos ao `node_modules/@types` do projeto.
+
+Prepare Chromium e reutilize as imagens da mesma revisão:
+
+```bash
+npx playwright install --with-deps chromium
+docker build --target tools --tag tria-tools:preflight .
+docker build --target runner --tag tria:preflight .
+TRIA_TOOLS_IMAGE=tria-tools:preflight TRIA_RUNNER_IMAGE=tria:preflight npm run test:ci-integration
+TRIA_TOOLS_IMAGE=tria-tools:preflight npm run test:integration:story-3-3
+TRIA_TOOLS_IMAGE=tria-tools:preflight TRIA_RUNNER_IMAGE=tria:preflight bash scripts/project-resource-e2e.sh
+```
+
+O CI executa evidências, crash/recovery, HTTP e bootstrap sintéticos, depois
+PostgreSQL e jornadas browser 3.2/3.3. O comando `test:integration:story-3-3`
+executa as duas stories no runner atual. A suíte de projetos também executa
+`upgrade-preservation.integration.test.ts`: banco preenchido nas migrações
+45/50, PDFs existentes e repetição de migração devem preservar registros e bytes.
+`test:integration` continua sendo o smoke somente leitura da pilha local já
+aberta, usando seu login; não substitui as integrações sintéticas acima.
+
+Os três runners públicos usam `isolated-integration-supervisor.sh`. Ele recusa
+namespaces, recursos ou tags de destino preexistentes e falhas de enumeração
+antes de estabelecer ownership. Cada execução recebe um token aleatório nos
+labels dos containers, volumes e rede. A limpeza remove somente recursos desse
+token, confere a ausência posterior e propaga falhas. INT/TERM são encaminhados
+a todo o grupo do processo; término tem prazo e processos vivos remanescentes
+falham. Recursos de outra execução são preservados e tornam o gate vermelho.
+A suíte de projetos mantém o namespace sintético fixo exigido por seus testes e
+recusa executá-lo enquanto houver recursos anteriores.
+
+Imagens fornecidas por `TRIA_TOOLS_IMAGE`/`TRIA_RUNNER_IMAGE` são resolvidas para
+IDs e nunca têm suas tags alteradas nem são removidas. Sem essas opções, o supervisor constrói tags
+próprias do namespace e remove somente as tags que ainda apontam aos IDs que
+criou. Secrets são sintéticos; os mounts individuais readonly permitem leitura
+pelo UID 1001 sem abrir o diretório temporário privado no host.
+
+`--preflight-only` valida somente sintaxe e não aprova PostgreSQL ou browser.
+`--harness-self-test <child>` é reservado aos testes sintéticos de isolamento;
+a saída do child é suprimida e não pode alegar aprovação funcional. O caminho
+normal seleciona somente as suítes fixas do código.
+
+`scripts/story-3-3-isolated-integration.sh`,
+`scripts/verify-story-3-3-baseline.mjs`,
+`tests/contracts/story-3-3-baseline.json` e os testes `.historical.ts` preservam
+fotografias de stories antigas. Seus hashes não são atualizados para acomodar
+evolução de dependências, health ou workflow. Esses verificadores podem recusar
+o código atual por esse motivo e não são gates atuais nem evidência de falha de
+preservação de produção. A produção é conferida separadamente, somente por
+leitura, pelo responsável; esses testes não recebem dados ou secrets reais.
+O deploy permanece condicionado a push em `main` e ao job `ci`; merge e deploy
+exigem autorização prévia.
+
+A exclusividade do namespace é reservada no daemon por um container parado
+`<namespace>-integration-lock`, nunca iniciado ou adotado. O Engine rejeita
+criação com nome já ocupado com conflito; o perdedor não remove a reserva do
+vencedor. A primitiva foi conferida na [API oficial do Docker Engine](https://docs.docker.com/reference/api/engine/version/v1.53/#tag/Container/operation/ContainerCreate)
+e em duas criações concorrentes reais isoladas. A reserva só é liberada pelo
+owner correspondente, depois da limpeza dos demais recursos.
+
+Preparação e suíte inteira recebem encaminhamento de INT/TERM e prazo de
+término. Inventário/inspect/cleanup usam deadline de 15 segundos por chamada;
+builds usam 1.800 segundos e a suíte funcional, 3.600 segundos. Uma falha no
+término do grupo não dispara um `wait` bloqueante nem libera recursos que o
+processo vivo ainda possa recriar. Imagens construídas e reutilizadas chegam à
+suíte por ID imutável; tags próprias são mantidas separadas para a limpeza.
+Prontidão HTTP usa connect-timeout/max-time; bootstrap exige health efetivamente
+`bootstrap`, UID/GID 1001 e ausência de ambiente privilegiado.
+
+Quando há falha funcional, logs, screenshots e resultados sintéticos de uma
+allowlist são preservados fora do checkout em
+`${RUNNER_TEMP:-${TMPDIR:-/tmp}}/tria-integration-artifacts/<namespace>-<owner>`.
+Secrets, overrides Compose, perfis de navegador, dumps de ambiente e arquivos de
+entrada não são copiados. O workflow envia somente esse diretório com
+`upload-artifact` e `if: failure()`. O self-test continua com saída suprimida.
+
+A liberação da reserva usa `docker rm -fv` somente depois de conferir seu owner.
+Isso remove também os volumes anônimos vazios criados pelo `VOLUME` da imagem
+PostgreSQL usada no lock. A prova real capturou o nome em `.Mounts` antes da
+remoção e confirmou sua ausência depois; nenhum volume anônimo desconhecido é
+alvo de limpeza. O coletor de artefatos também recusa symlinks no diretório da
+execução, em `browser`/`containers` e nos arquivos de destino, conferindo a
+contenção final antes de truncar ou escrever qualquer conteúdo.

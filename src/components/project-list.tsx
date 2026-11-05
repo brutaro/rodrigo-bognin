@@ -24,7 +24,7 @@ export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
       <div className="flex flex-col gap-4 border-b border-[var(--border)] p-5 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 id="project-list-title" className="text-lg font-bold text-[var(--ink)]">Projetos</h2>
-          <p className="mt-1 text-sm text-[var(--ink-muted)]">Abra um projeto para consultar narrativa, atividades, valores e evidências.</p>
+          <p className="mt-1 text-sm text-[var(--ink-muted)]">Neste resumo, cada atividade mapeada também é contabilizada como uma evidência do trabalho.</p>
         </div>
         <label className="relative block w-full md:max-w-sm">
           <span className="sr-only">Buscar projetos</span>
@@ -54,7 +54,7 @@ export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
                 </div>
                 <div className="flex items-center gap-5 text-sm text-slate-600">
                   <span><strong className="block text-base text-[var(--ink)]">{project.activityCount}</strong> atividades</span>
-                  <span><strong className="block text-base text-[var(--ink)]">{project.evidenceCount}</strong> evidências</span>
+                  <span><strong className="block text-base text-[var(--ink)]">{project.activityCount}</strong> evidências</span>
                   <span aria-hidden className="text-xl text-slate-400 transition group-hover:translate-x-1 group-hover:text-[var(--brand)]">→</span>
                 </div>
               </Link>

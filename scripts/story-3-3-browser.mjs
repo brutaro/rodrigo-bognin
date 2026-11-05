@@ -14,6 +14,8 @@ const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: { width: 320, height: 900 } });
 const page = await context.newPage();
 const errors = [];
+const failedResponses = [];
+page.on("response", (response) => { if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() }); });
 page.on("pageerror", (error) => errors.push(error.message));
 page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
 
@@ -257,6 +259,8 @@ try {
   console.log(`G-33-13 browser PASS: ${output}`);
   console.log(`G33-14 browser PASS: ${output}`);
 } catch (error) {
+  await writeFile(`${output}/http-failures.json`, JSON.stringify(failedResponses, null, 2));
+
   await page.screenshot({ path: `${output}/story-3-3-failure.png`, fullPage: true }).catch(() => undefined);
   await writeFile(`${output}/story-3-3-failure.txt`, `${String(error)}\n${await page.locator("body").innerText().catch(() => "")}`);
   throw error;
