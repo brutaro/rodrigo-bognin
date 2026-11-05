@@ -1,53 +1,35 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
-import { lstat, opendir, open, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { HISTORICAL_SHA256, regularFileBytes, sha256, discoverOriginParent, validateManifest, verifyTrees } from "./lib/protected-origin.mjs";
 
-const MANIFEST_SHA256 = "b9b2979be4e5174dc1b1a49f55377db0e32e9e4d320c7b94c6bee98648f35bfa";
-const TREE_ANCHORS = new Map([
-  ["RODRIGO-BOGNIN/_bmad", "c3ffd46aa4dcd780ba6c6155caaeaa61e7212ade7fc7da21a7989ce059621547"],
-  ["RODRIGO-BOGNIN/_bmad-output", "690f23a86a0027b581fe06a0d2f58e3b06394691df6dbc684cb59920aef9c307"],
-  ["RODRIGO-BOGNIN/.agents", "bf0a1cdf26222e6c5b44a4862092ff0d0823a14231704d6a0e4c80228cba425f"],
-]);
+const CURRENT_MANIFEST_SHA256 = "870a305f86f252ced3024feb162a5327154d2f7e44c7fcc56170173992871427";
+const RECONCILIATION_SHA256 = "022263baa5b2d849e5540db63a099ece5667a45a18b6713de9836077dcf51c1f";
+const TREE_ANCHORS = Object.freeze({
+  _bmad: [46, "44657016112897f3602b0f5305019c38d04fe7f3c83a51b825619bc553ca0d6c"],
+  "_bmad-output": [105, "5250807bd7da577a164189e082a7bd2b5daf1725d1b5ec7411859e67915245f1"],
+  ".agents": [243, "040ec4f294ff046df212e6193b6b6ba4eb9cd10f9321a617dd986ca971f1ea6e"],
+});
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const manifestPath = path.join(project, "docs/protected-origin-manifest.json");
-const bytes = await readFile(manifestPath);
-if (createHash("sha256").update(bytes).digest("hex") !== MANIFEST_SHA256) throw new Error("Manifesto protegido divergiu da âncora externa ao documento.");
-const manifest = JSON.parse(bytes.toString("utf8")); const projectsRoot = path.dirname(path.dirname(project)); const failures = [];
-async function regularFiles(root) {
-  const result = []; const pending = [{ absolute: root, relative: "" }];
-  while (pending.length) {
-    const current = pending.pop(); const directory = await opendir(current.absolute);
-    for await (const entry of directory) {
-      const absolute = path.join(current.absolute, entry.name); const relative = path.posix.join(current.relative, entry.name);
-      const details = await lstat(absolute);
-      if (details.isSymbolicLink()) throw new Error(`Link simbólico recusado: ${relative}`);
-      if (details.isDirectory()) pending.push({ absolute, relative });
-      else if (details.isFile()) result.push({ absolute, relative, size: details.size });
-      else throw new Error(`Entrada não regular recusada: ${relative}`);
-    }
+try {
+  const args = process.argv.slice(2);
+  if (args.length !== 0 && (args.length !== 2 || args[0] !== "--origin-parent")) throw new Error("Uso: npm run origin:verify -- [--origin-parent /origem/RODRIGO-BOGNIN]. Nenhuma opção de captura/hash é aceita.");
+  for (const [file, expected] of [
+    ["protected-origin-manifest.json", HISTORICAL_SHA256],
+    ["protected-origin-current.json", CURRENT_MANIFEST_SHA256],
+    ["protected-origin-reconciliation.json", RECONCILIATION_SHA256],
+  ]) {
+    const bytes = await regularFileBytes(path.join(project, "docs", file));
+    if (sha256(bytes) !== expected) throw new Error(`Manifesto/relatório divergiu da âncora no código: ${file}`);
   }
-  return result.sort((a, b) => a.relative.localeCompare(b.relative));
-}
-for (const [rootName, model] of Object.entries(manifest.roots ?? {})) {
-  const trustedTree = TREE_ANCHORS.get(rootName);
-  if (!trustedTree || model.tree_sha256 !== trustedTree || model.file_count !== model.files?.length) { failures.push(`${rootName}:metadados`); continue; }
-  const absoluteRoot = path.resolve(projectsRoot, rootName);
-  if (absoluteRoot !== path.join(projectsRoot, rootName) || !absoluteRoot.startsWith(`${projectsRoot}${path.sep}`)) { failures.push(`${rootName}:contenção`); continue; }
-  let actual;
-  try { const rootDetails = await lstat(absoluteRoot); if (!rootDetails.isDirectory() || rootDetails.isSymbolicLink()) throw new Error("root não regular"); actual = await regularFiles(absoluteRoot); } catch (error) { failures.push(`${rootName}:${error.message}`); continue; }
-  const expected = new Map(model.files.map((entry) => [entry.path, entry]));
-  if (actual.length !== model.file_count || new Set(model.files.map((entry) => entry.path)).size !== model.file_count) failures.push(`${rootName}:conjunto`);
-  for (const item of actual) {
-    const entry = expected.get(item.relative); if (!entry) { failures.push(`${rootName}/${item.relative}:extra`); continue; }
-    const handle = await open(item.absolute, "r"); const hash = createHash("sha256");
-    try { for await (const chunk of handle.createReadStream({ autoClose: false })) hash.update(chunk); } finally { await handle.close(); }
-    if (item.size !== entry.size || hash.digest("hex") !== entry.sha256) failures.push(`${rootName}/${item.relative}:conteúdo`);
-    expected.delete(item.relative);
+  const manifest = validateManifest(JSON.parse(await regularFileBytes(path.join(project, "docs/protected-origin-current.json"))));
+  for (const [root, [count, digest]] of Object.entries(TREE_ANCHORS)) {
+    if (manifest.roots[root].file_count !== count || manifest.roots[root].tree_sha256 !== digest) throw new Error(`Âncora da árvore divergiu: ${root}`);
   }
-  for (const missing of expected.keys()) failures.push(`${rootName}/${missing}:ausente`);
+  const origin = discoverOriginParent(project, args[1]);
+  await verifyTrees(manifest, origin);
+  console.log(`origem protegida: captura atual, árvores e arquivos preservados; histórico intacto (origem: ${origin})`);
+} catch (error) {
+  console.error(`Origem protegida recusada: ${error.message}`);
+  process.exitCode = 1;
 }
-if (manifest.roots && Object.keys(manifest.roots).length !== TREE_ANCHORS.size) failures.push("roots:conjunto");
-if (failures.length) { console.error(`Origem protegida divergiu em ${failures.length} item(ns): ${failures.slice(0, 5).join(", ")}`); process.exit(1); }
-console.log("origem protegida: âncora, roots, árvore e arquivos permanecem byte a byte inalterados");

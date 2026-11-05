@@ -14,9 +14,9 @@ if (legacy) {
   commands.push({ argv: ["node", "scripts/integration-smoke.mjs"], env: process.env, display: "node scripts/integration-smoke.mjs" });
 }
 commands.push({
-  argv: ["bash", "scripts/story-3-3-isolated-integration.sh"],
+  argv: ["bash", "scripts/source-ledger-ci-integration.sh"],
   env: { ...process.env, TRIA_INTEGRATION_ISOLATED: "confirmed", TRIA_INTEGRATION_NAMESPACE: story33Namespace },
-  display: `TRIA_INTEGRATION_NAMESPACE=${story33Namespace} bash scripts/story-3-3-isolated-integration.sh`,
+  display: `TRIA_INTEGRATION_NAMESPACE=${story33Namespace} bash scripts/source-ledger-ci-integration.sh`,
 });
 
 if (process.argv.includes("--print-command") || process.argv.includes("--print-plan")) {

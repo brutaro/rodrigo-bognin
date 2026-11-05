@@ -19,7 +19,7 @@ fi
 cd "$root"
 # Evidências, recuperação após falha, HTTP e bootstrap sem deploy.
 bash scripts/ci-isolated-integration.sh
-# Preparação e reconciliação PostgreSQL no namespace descartável próprio.
+# PostgreSQL e browsers 3.2/3.3 no namespace descartável próprio.
 TRIA_INTEGRATION_ISOLATED=confirmed \
 TRIA_INTEGRATION_NAMESPACE="$story33_namespace" \
   bash scripts/source-ledger-ci-integration.sh

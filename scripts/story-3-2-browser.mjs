@@ -12,6 +12,8 @@ const browser=await chromium.launch({headless:true});
 const context=await browser.newContext({viewport:{width:1280,height:900}});
 const page=await context.newPage();
 const errors=[]; let action;
+const failedResponses = [];
+page.on("response", (response) => { if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() }); });
 page.on('pageerror',e=>errors.push(e.message));
 page.on('console',m=>{if(m.type()==='error') errors.push(m.text());});
 page.on('request',r=>{if(r.headers()['next-action']){try{if(JSON.parse(r.postData())?.[0]?.previewHash)action={headers:r.headers(),body:r.postData()};}catch{}}});
@@ -101,4 +103,6 @@ try{
   assert.equal(await page.getByRole('article',{name:'Prévia preparada',exact:true}).count(),0);
   assert.deepEqual(errors,[]);await writeFile(`${output}/browser-result.json`,JSON.stringify({verdict:'PASS',journeys:['CSV BOM upload→attestation→inspect→map→preview→explicit confirmation→reload','XLSX explicit sheet→map→preview→confirmation→reload','Sequential Tab/keyboard upload→CSV options→mapping→preview→error drill-down→confirmation; persisted reload'],checks:['stale mapping','delayed action','one aria-current','owner auth','foreign origin','320px','640 CSS px with DPR 2 (200% emulation, not browser zoom)','full keyboard controls journey'],errors},null,2));
   console.log(`G-13 browser PASS: ${output}`);
-}catch(error){await page.screenshot({path:`${output}/failure.png`,fullPage:true}).catch(()=>{});await writeFile(`${output}/failure.txt`,String(error)+'\n'+await page.locator('body').innerText().catch(()=>''));throw error;}finally{await browser.close();}
+}catch(error){
+  await writeFile(`${output}/http-failures.json`, JSON.stringify(failedResponses, null, 2));
+await page.screenshot({path:`${output}/failure.png`,fullPage:true}).catch(()=>{});await writeFile(`${output}/failure.txt`,String(error)+'\n'+await page.locator('body').innerText().catch(()=>''));throw error;}finally{await browser.close();}

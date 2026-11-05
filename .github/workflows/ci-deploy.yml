@@ -24,20 +24,34 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
+      - run: npm run security:audit
       - run: npm run release:scan
       - run: npm run check
       - run: npm run railway:check
       - run: docker build --target tools --tag tria-tools:${{ github.sha }} .
       - run: docker build --target runner --tag tria:${{ github.sha }} .
+      - name: Preparar navegador dos testes
+        run: npx playwright install --with-deps chromium
       - name: Integração isolada com fixtures sintéticas
         env:
+          TRIA_TOOLS_IMAGE: tria-tools:${{ github.sha }}
+          TRIA_RUNNER_IMAGE: tria:${{ github.sha }}
           TRIA_INTEGRATION_ISOLATED: confirmed
           TRIA_INTEGRATION_NAMESPACE: tria-evidence-${{ github.run_id }}-${{ github.run_attempt }}
         run: npm run test:ci-integration
-      - name: Preparar navegador dos testes
-        run: npx playwright install --with-deps chromium
       - name: Importação por projeto e medições no navegador
+        env:
+          TRIA_TOOLS_IMAGE: tria-tools:${{ github.sha }}
+          TRIA_RUNNER_IMAGE: tria:${{ github.sha }}
         run: bash scripts/project-resource-e2e.sh
+      - name: Preservar diagnóstico sintético de falha
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tria-integration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/tria-integration-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -12,24 +12,22 @@ describe('G-03/G-12/G-15 fronteiras da preparação',()=>{
   it('preserva o dispatch legado sem executar dados reais',()=>{
     const clean={...process.env,APP_BASE_URL:'',DB_APP_PASSWORD_FILE:'',DB_ADMIN_PASSWORD_FILE:''};
     const isolated=execFileSync(process.execPath,['scripts/test-integration.mjs','--print-command'],{env:clean,encoding:'utf8'}).trim();
-    expect(isolated).toMatch(/^TRIA_INTEGRATION_NAMESPACE=tria-adjustments-local-[a-z0-9_-]+ bash scripts\/story-3-3-isolated-integration\.sh$/);
+    expect(isolated).toMatch(/^TRIA_INTEGRATION_NAMESPACE=tria-adjustments-local-[a-z0-9_-]+ bash scripts\/source-ledger-ci-integration\.sh$/);
     const legacy=execFileSync(process.execPath,['scripts/test-integration.mjs','--print-command'],{env:{...clean,APP_BASE_URL:'http://web:3000',DB_APP_PASSWORD_FILE:'/synthetic/app',DB_ADMIN_PASSWORD_FILE:'/synthetic/admin',TRIA_INTEGRATION_ISOLATED:'confirmed',TRIA_INTEGRATION_NAMESPACE:'tria-adjustments-dispatch-test'},encoding:'utf8'}).trim();
-    expect(legacy).toMatch(/^node scripts\/integration-smoke\.mjs && TRIA_INTEGRATION_NAMESPACE=tria-adjustments-local-[a-z0-9_-]+ bash scripts\/story-3-3-isolated-integration\.sh$/);
+    expect(legacy).toMatch(/^node scripts\/integration-smoke\.mjs && TRIA_INTEGRATION_NAMESPACE=tria-adjustments-local-[a-z0-9_-]+ bash scripts\/source-ledger-ci-integration\.sh$/);
   });
-  it('exige os dois marcadores únicos antes de gerar o harness 3.3',()=>{
-    const harness=readFileSync('scripts/story-3-3-isolated-integration.sh','utf8');
-    const baseline=readFileSync('scripts/story-3-2-isolated-integration.sh','utf8');
-    expect([...baseline.matchAll(/^root=/gm)]).toHaveLength(1);
-    expect([...baseline.matchAll(/^echo "Suíte dedicada PostgreSQL concluída/gm)]).toHaveLength(1);
-    expect([...baseline.matchAll(/^echo "Story 3\.2:/gm)]).toHaveLength(1);
-    expect(harness).toContain('marker_counts=');
-    expect(harness).toContain('root_marker_count');
-    expect(harness).toContain('postgres_marker_count');
-    expect(harness).toContain('story32_marker_count');
-    expect(harness).toContain('verify-story-3-3-baseline.mjs');
-    expect(readFileSync('scripts/verify-story-3-3-baseline.mjs','utf8')).toContain('story-3-3-baseline.json');
-    expect(harness).toContain('TRIA_INSTANCE_NAMESPACE=$namespace');
-    expect(() => execFileSync('bash',['-n','scripts/story-3-3-isolated-integration.sh'],{encoding:'utf8'})).not.toThrow();
+  it('executa a suíte vigente sem depender de snapshots históricos',()=>{
+    const harness=readFileSync('scripts/isolated-integration-supervisor.sh','utf8');
+    const suite=readFileSync('scripts/source-ledger-integration-suite.sh','utf8');
+    expect(harness).not.toContain('verify-story-3-3-baseline.mjs');
+    expect(harness).toContain('source-ledger-integration-suite.sh');
+    expect(suite).toContain('TRIA_INSTANCE_NAMESPACE=$namespace');
+    expect(suite).toContain('scripts/story-3-2-browser.mjs');
+    expect(suite).toContain('scripts/story-3-3-browser.mjs');
+    expect(suite.indexOf('scripts/story-3-2-browser.mjs')).toBeLessThan(suite.indexOf('scripts/seed-story-3-3-reconciliation.mjs'));
+    expect(suite.indexOf('scripts/seed-story-3-3-reconciliation.mjs')).toBeLessThan(suite.indexOf('scripts/story-3-3-browser.mjs'));
+    expect(() => execFileSync('bash',['-n','scripts/source-ledger-ci-integration.sh'])).not.toThrow();
+    expect(() => execFileSync('bash',['-n','scripts/source-ledger-integration-suite.sh'])).not.toThrow();
   });
   it('rejeita seed 3.3 fora de namespace e banco descartáveis',()=>{
     const seed=readFileSync('scripts/seed-story-3-3-reconciliation.mjs','utf8');
@@ -46,17 +44,17 @@ describe('G-03/G-12/G-15 fronteiras da preparação',()=>{
     const composed=readFileSync('scripts/story-3-3-ci-integration.sh','utf8');
     expect(composed).toContain('bash scripts/ci-isolated-integration.sh');
     expect(composed).toContain('bash scripts/source-ledger-ci-integration.sh');
-    const current=readFileSync('scripts/source-ledger-ci-integration.sh','utf8');
+    const current=readFileSync('scripts/source-ledger-integration-suite.sh','utf8');
     expect(current).toContain('tests/integration/story-3-2-postgres.integration.test.ts');
     expect(current).toContain('tests/integration/story-3-3-postgres.integration.test.ts');
     expect(current).not.toContain('verify-story-3-3-baseline.mjs');
     expect(readFileSync('scripts/ci-isolated-integration.sh','utf8')).not.toContain('story-3-3-isolated-integration.sh');
   });
   it('mantém os IDs dos gates 3.3 e as provas browser de duração/ausência',()=>{
-    const harness=readFileSync('scripts/story-3-3-isolated-integration.sh','utf8');
+    const harness=readFileSync('scripts/isolated-integration-supervisor.sh','utf8');
     const browser=readFileSync('scripts/story-3-3-browser.mjs','utf8');
     const registry=readFileSync('src/modules/source-ledger/domain/import-registry.ts','utf8');
-    expect(harness).toContain('G33-01 PASS');
+    expect(harness).toContain('source-ledger-integration-suite.sh');
     expect(browser).toContain('G33-14 browser PASS');
     expect(browser).toContain('Ausências: página 2 de');
     expect(browser).toContain('duracao: 02:03');
