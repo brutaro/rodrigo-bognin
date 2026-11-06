@@ -106,7 +106,7 @@ export async function listProjectSummaries(): Promise<ProjectSummary[]> {
   return rows.map((row) => ({
     id: row.id, name: row.title, archived: Boolean(row.archived_at), lastOpenedAt: row.last_opened_at, sourceName: row.resource_source_title || row.title, metadataRevision: row.metadata_revision, period: period(row.date_start, row.date_end),
     status: status(row.publication_count, Number(row.revision), Boolean(row.draft_updated_at && row.latest_publication_at && new Date(row.draft_updated_at) > new Date(row.latest_publication_at))),
-    narrative: row.narrative || "Projeto entregue, com atividades mapeadas e evidências vinculadas. A validação segue os registros e a documentação do projeto.",
+    narrative: "Projeto entregue, com atividades mapeadas e contabilizadas como evidências. Fontes, registros e documentos vinculados preservam a rastreabilidade do trabalho. A validação documental segue a documentação e os registros do projeto.",
     activityCount: row.activity_count, evidenceCount: row.evidence_count,
   }));
 }
@@ -181,7 +181,7 @@ export async function getProjectDetails(id: string, query?: Sql | TransactionSql
     id: row.id, name: row.title, archived: Boolean(row.archived_at), lastOpenedAt: row.last_opened_at, sourceName: row.resource_source_title || row.title, metadataRevision: row.metadata_revision, period: period(row.date_start, row.date_end),
     periodStart: row.date_start ?? "", periodEnd: row.date_end ?? "",
     status: status(row.publication_count, Number(row.revision), Boolean(row.draft_updated_at && row.latest_publication_at && new Date(row.draft_updated_at) > new Date(row.latest_publication_at))),
-    narrative: row.narrative || "Projeto entregue, com atividades mapeadas e evidências vinculadas. A validação segue os registros e a documentação do projeto.",
+    narrative: "Projeto entregue, com atividades mapeadas e contabilizadas como evidências. Fontes, registros e documentos vinculados preservam a rastreabilidade do trabalho. A validação documental segue a documentação e os registros do projeto.",
     activities: activities.map((item) => ({
       id: item.id, description: item.description || item.functionality || "Atividade registrada na fonte", bm: item.bm_code,
       hours: formatDuration(item.effective_duration_seconds), measuredValue: formatBrlDecimal(item.effective_measured_value),
