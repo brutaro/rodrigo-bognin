@@ -11,7 +11,7 @@ export function CashSummary({result,scope="Projeto inteiro",portfolioFormula=fal
   }
   return <section aria-label="Resultado financeiro" className="my-6 rounded-lg border border-[var(--border)] bg-white p-5 sm:p-6">
     <h2 className="text-xl font-bold">Resultado financeiro — caixa</h2>
-    <p className="mt-2 text-sm text-[var(--ink-muted)]">{portfolioFormula?"Visão geral: realizado pelas notas fiscais; reembolso recebido pelo valor pago; saldo a receber pela diferença para a base consolidada.":`${scope}${result.review ? ` · conferência até ${result.review.cutoffDate.split('-').reverse().join('/')}` : ''}. Custos, notas fiscais e recebimentos permanecem separados.`}</p>
+    <p className="mt-2 text-sm text-[var(--ink-muted)]">{portfolioFormula?"Visão consolidada dos projetos entregues: notas fiscais identificadas como valor realizado; pagamentos registrados no caixa; reembolsos recebidos pelo mesmo valor dos pagamentos; saldo a receber apurado pela diferença entre a base consolidada e o valor pago. Atividades mapeadas e evidências vinculadas aos registros e à documentação de cada projeto.":`${scope}${result.review ? ` · conferência até ${result.review.cutoffDate.split('-').reverse().join('/')}` : ''}. Custos, notas fiscais e recebimentos permanecem separados.`}</p>
     <div className="mt-4 border-l-4 border-[#CB5C2B] bg-[var(--surface-subtle)] p-4">
       <p className="font-semibold">{cashResultLabel(result)}</p><p className="mt-1 text-2xl font-bold">{result.resultCents===null ? "Não calculável" : cashMoney(result.resultCents)}</p>
       <p className="mt-1 text-sm">Reembolso recebido − valor pago</p>
