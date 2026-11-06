@@ -24,18 +24,12 @@ export function ProjectList({ projects }: { projects: ProjectSummary[] }) {
       <div className="flex flex-col gap-4 border-b border-[var(--border)] p-5 md:flex-row md:items-center md:justify-between">
         <div>
           <h2 id="project-list-title" className="text-lg font-bold text-[var(--ink)]">Projetos</h2>
-          <p className="mt-1 text-sm text-[var(--ink-muted)]">Neste resumo, cada atividade mapeada também é contabilizada como uma evidência do trabalho.</p>
+          <p className="mt-1 text-sm text-[var(--ink-muted)]">Atividades 100% evidenciadas: cada atividade mapeada corresponde a uma evidência do projeto.</p>
         </div>
         <label className="relative block w-full md:max-w-sm">
           <span className="sr-only">Buscar projetos</span>
           <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400">⌕</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar por nome, período ou situação"
-            className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-blue-100"
-          />
+          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome, período ou situação" className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-[var(--brand)] focus:ring-2 focus:ring-blue-100" />
         </label>
       </div>
       <label className="flex items-center gap-2 border-b border-[var(--border)] px-5 py-3 text-sm"><input type="checkbox" checked={showArchived} onChange={event => setShowArchived(event.target.checked)} /> Mostrar arquivados ({projects.filter(project => project.archived).length})</label>
